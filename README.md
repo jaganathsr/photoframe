@@ -4,6 +4,14 @@ A replacement home screen and photo slideshow for old Android photo frames, buil
 
 > Work in progress.
 
+## Is this my frame?
+
+Frame Home was built and tested on the **Lenovo Smart Frame**, model **CD-3L501F** ([Lenovo product page](https://www.lenovo.com/us/en/p/smart-devices/smart-home/smart-home-series/lenovo-cd-3l501/zziszsdcd04)):
+
+- a 21.5-inch Full HD wall/desk photo frame with a matte, anti-glare screen and **no touchscreen**
+- sold around 2020–2021 as a Google Photos frame, set up with the *Lenovo Smart Frame* phone app
+- the model number is on the label on the back; in Android settings the model shows as **Lenovo CD-3L501F**
+
 ## Why this exists
 
 The Lenovo Smart Frame was a good piece of hardware sold as a Google Photos frame. Then two things happened:
