@@ -4,17 +4,18 @@ The Lenovo Smart Frame runs Android 10, but it has no touchscreen and hides most
 
 ## What you need
 
-- A **keyboard** you can plug into the frame's USB port: a wired USB keyboard, or a wireless keyboard (and mouse) with a USB receiver. A mouse is optional but makes some screens easier.
+- A **mouse and keyboard** you can plug into the frame's USB port. The easiest is a wireless keyboard + mouse set that shares one USB receiver, because the frame has only one USB port. (A USB hub with a wired mouse and keyboard also works.)
 - The frame connected to your **home Wi-Fi**.
 - A **phone** on the same Wi-Fi, for the remote control afterwards.
 
-Keyboard basics on the frame: **arrow keys** move around, **Enter** selects, **Esc** goes back.
+Basics on the frame: the **mouse** clicks things like on a computer; on the keyboard, **arrow keys** move around, **Enter** selects, **Esc** goes back.
 
 ## 1. Download and install Frame Home
 
-1. Plug the keyboard into the frame.
-2. Open the frame's **Settings**, then open the built-in web browser. Lenovo's screen has no app list, so go through Settings search:
-   - In Settings, open **search** (the magnifier) and type `browser`.
+1. Plug the mouse and keyboard receiver into the frame.
+2. Open the built-in web browser. Lenovo's screen has no app list, so go through Settings:
+   - Move the mouse pointer to the **very top edge** of the screen. Android's pull-down panel appears; click the **gear icon** to open **Settings**.
+   - In Settings, click **search** (the magnifier) and type `browser`.
    - Choose **Browser** (it says *App info* underneath), then choose **Open**.
 3. In the browser, go to the project's **Releases** page and download the latest `FrameHome-<version>.apk`.
 4. Open the downloaded file. Android asks whether the browser may install apps: choose **Settings**, turn on **Allow from this source**, press **Esc**, then choose **Install**.
@@ -76,7 +77,7 @@ None of this is needed to use Frame Home. It's for building from source, silent 
 
 ### Turn on USB debugging
 
-Lenovo's settings menu has no "About" page. With the keyboard plugged in, open the frame's **Settings**, use **search** to find **Build number** (or install *Activity Launcher* and open **Settings → Settings**), then press **Enter** on Build number 7 times. In **Settings → System → Developer options**, turn on **USB debugging**.
+Lenovo's settings menu has no "About" page. Open **Settings** (mouse pointer to the top edge, then the gear icon), use **search** to find **Build number** (or install *Activity Launcher* and open **Settings → Settings**), then press **Enter** on Build number 7 times. In **Settings → System → Developer options**, turn on **USB debugging**.
 
 The frame has one USB port, so when the computer cable is plugged in, the keyboard isn't. Pair a **Bluetooth keyboard** (Settings → Connected devices → Pair new device) to accept the "Allow USB debugging?" prompt.
 
