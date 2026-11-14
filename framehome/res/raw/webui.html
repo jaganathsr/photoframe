@@ -82,6 +82,21 @@
                       border-radius: 14px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
   #pin-screen p { color: var(--muted); }
   [hidden] { display: none !important; }
+  .field { display: block; padding: 12px 16px; border-top: 1px solid var(--line); }
+  .field:first-child { border-top: 0; }
+  .field span { display: block; font-size: 14px; color: var(--muted); margin-bottom: 6px; }
+  .field input[type=text], .field input[type=password], .field input[type=url] {
+    width: 100%; font: inherit; color: var(--text); background: var(--chip); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 12px; }
+  .inline { display: flex; gap: 8px; }
+  .inline input { flex: 1; }
+  .browser { border-top: 1px solid var(--line); padding: 8px 16px 12px; }
+  .browser .crumb { font-size: 13px; color: var(--muted); margin: 6px 0; word-break: break-all; }
+  .browser button { display: block; width: 100%; text-align: left; margin-top: 6px; min-height: 42px; }
+  .actions { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; gap: 12px; align-items: center; }
+  .actions .msg { flex: 1; font-size: 14px; color: var(--muted); }
+  .actions .msg.ok { color: var(--ok); }
+  .actions .msg.err { color: var(--danger); }
   .upload-btn { flex: none; border: 1px solid var(--line); background: var(--chip); border-radius: 12px;
                 padding: 8px 14px; min-height: 40px; display: inline-flex; align-items: center; cursor: pointer; }
 </style>
@@ -115,6 +130,52 @@
       <button data-action="home">Home screen</button>
       <button data-action="sleep">Sleep now</button>
       <button data-action="wake">Wake</button>
+    </div>
+  </div>
+
+  <h2>Photo source</h2>
+  <div class="card" id="source-card">
+    <div class="row">
+      <label for="source">Show photos from</label>
+      <select id="source">
+        <option value="immich">Immich</option>
+        <option value="folder">Folder on the frame</option>
+        <option value="smb">Network share (SMB)</option>
+      </select>
+    </div>
+    <div data-src="immich">
+      <label class="field"><span>Immich server address</span>
+        <input type="url" id="immichUrl" placeholder="http://192.168.1.10:2283" autocomplete="off"></label>
+      <label class="field"><span>API key <small id="immichKeyHint"></small></span>
+        <input type="password" id="immichKey" autocomplete="new-password" placeholder="Immich → Account Settings → API Keys"></label>
+    </div>
+    <div data-src="folder">
+      <label class="field"><span>Folder</span>
+        <div class="inline"><input type="text" id="folderPath" autocomplete="off">
+          <button type="button" id="browse" style="min-height:40px;padding:8px 14px">Browse</button></div></label>
+      <div class="browser" id="browser" hidden></div>
+    </div>
+    <div data-src="smb">
+      <label class="field"><span>Server (name or IP)</span>
+        <input type="text" id="smbHost" placeholder="192.168.1.10 or mynas" autocomplete="off"></label>
+      <label class="field"><span>Share name</span>
+        <input type="text" id="smbShare" placeholder="photo" autocomplete="off"></label>
+      <label class="field"><span>Folder inside the share (optional)</span>
+        <input type="text" id="smbPath" placeholder="Family/Frame" autocomplete="off"></label>
+      <label class="field"><span>Username (leave empty for guest access)</span>
+        <input type="text" id="smbUser" autocomplete="off" autocapitalize="off"></label>
+      <label class="field"><span>Password <small id="smbPassHint"></small></span>
+        <input type="password" id="smbPass" autocomplete="new-password"></label>
+      <label class="field"><span>Domain / workgroup (optional)</span>
+        <input type="text" id="smbDomain" autocomplete="off"></label>
+    </div>
+    <div class="row" data-src="folder smb">
+      <label for="recursive">Include subfolders</label>
+      <label class="switch"><input type="checkbox" id="recursive"><span></span></label>
+    </div>
+    <div class="actions">
+      <span class="msg" id="source-msg"></span>
+      <button class="primary" id="source-save" type="button">Test &amp; save</button>
     </div>
   </div>
 
@@ -167,7 +228,7 @@
       <label for="showClock">Show clock</label>
       <label class="switch"><input type="checkbox" id="showClock"><span></span></label>
     </div>
-    <div class="row">
+    <div class="row" id="album-row">
       <label for="albumId">Album</label>
       <select id="albumId"><option>Loading…</option></select>
     </div>
@@ -307,10 +368,91 @@
     if (s.albumId && [...$('albumId').options].some(o => o.value === s.albumId)) $('albumId').value = s.albumId;
   }
 
+  let sourceDirty = false;
+  const SRC_FIELDS = ['immichUrl', 'folderPath', 'smbHost', 'smbShare', 'smbPath', 'smbUser', 'smbDomain'];
+  function showSourceFields() {
+    const src = $('source').value;
+    document.querySelectorAll('[data-src]').forEach((el) => { el.hidden = !el.dataset.src.split(' ').includes(src); });
+    $('album-row').hidden = src !== 'immich';
+  }
+  function renderSource(ss) {
+    if (!ss || sourceDirty) return;
+    $('source').value = ss.source;
+    for (const k of SRC_FIELDS) $(k).value = ss[k] || '';
+    $('recursive').checked = !!ss.recursive;
+    $('immichKey').value = ''; $('smbPass').value = '';
+    $('immichKeyHint').textContent = ss.immichKeySet ? '(saved — leave empty to keep)' : '';
+    $('smbPassHint').textContent = ss.smbPassSet ? '(saved — leave empty to keep)' : '';
+    showSourceFields();
+  }
+  document.querySelectorAll('#source-card input, #source-card select').forEach((el) =>
+    el.addEventListener('input', () => { sourceDirty = true; $('source-msg').textContent = ''; }));
+  $('source').addEventListener('change', showSourceFields);
+
+  $('source-save').addEventListener('click', async () => {
+    const body = { source: $('source').value, recursive: $('recursive').checked };
+    for (const k of SRC_FIELDS) body[k] = $(k).value;
+    if ($('immichKey').value) body.immichKey = $('immichKey').value;
+    if ($('smbPass').value) body.smbPass = $('smbPass').value;
+    const msg = $('source-msg');
+    msg.className = 'msg'; msg.textContent = 'Connecting…';
+    $('source-save').disabled = true;
+    try {
+      const res = await fetch('/api/source', { method: 'POST', body: JSON.stringify(body),
+        headers: { 'X-Pin': pin, 'Content-Type': 'application/json' } });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401 || res.status === 429) { showPin(data.error); return; }
+      if (!data.ok) throw new Error(data.error || `Error ${res.status}`);
+      sourceDirty = false;
+      renderSource(data.sourceSettings);
+      msg.className = 'msg ok';
+      if (data.needsAlbum) {
+        msg.textContent = 'Connected. Now choose an album below.';
+        await loadAlbums();
+        $('album-row').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        msg.textContent = `Saved – ${data.count} photos found`;
+        if (body.source === 'immich') loadAlbums();
+      }
+    } catch (e) {
+      msg.className = 'msg err'; msg.textContent = e.message;
+    } finally {
+      $('source-save').disabled = false;
+    }
+  });
+
+  async function browse(path) {
+    const box = $('browser');
+    box.hidden = false;
+    box.textContent = 'Loading…';
+    try {
+      const data = await api('/api/folders?path=' + encodeURIComponent(path || ''));
+      box.innerHTML = '';
+      const crumb = document.createElement('div');
+      crumb.className = 'crumb';
+      crumb.textContent = data.path ? `${data.path} — ${data.images} photos here` : 'Storage on the frame';
+      box.append(crumb);
+      const add = (label, fn, primary) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.textContent = label; if (primary) b.className = 'primary';
+        b.addEventListener('click', fn); box.append(b);
+      };
+      if (data.path) {
+        add('✓ Use this folder', () => { $('folderPath').value = data.path; sourceDirty = true; box.hidden = true; }, true);
+        add('↑ Up', () => browse(data.parent && data.roots.some(r => data.path !== r) ? data.parent : ''));
+      }
+      for (const f of data.folders) add('📁 ' + (data.path ? f.split('/').pop() : f), () => browse(f));
+      if (data.path && !data.readable) crumb.textContent += ' (no permission to read)';
+    } catch (e) {
+      if (e.message !== 'auth') box.textContent = e.message;
+    }
+  }
+  $('browse').addEventListener('click', () => browse($('folderPath').value));
+
   function renderStatus(st) {
     $('version').textContent = st.version + (st.deviceOwner ? '' : ' · remote updates unavailable');
     $('state-line').textContent = !st.screenOn ? 'Asleep' : st.showing[0].toUpperCase() + st.showing.slice(1);
-    const n = albumCounts[settings.albumId] ?? st.photoCount;
+    const n = ($('source').value === 'immich' ? albumCounts[settings.albumId] : undefined) ?? st.photoCount;
     $('photo-count').textContent = `${n} photos`;
     const rows = [
       ['Screen', st.screenOn ? 'On' : 'Off'],
@@ -363,6 +505,7 @@
       $('pin-screen').hidden = true;
       $('app').hidden = false;
       if (!busy) render(data.settings);
+      renderSource(data.sourceSettings);
       renderStatus(data.status);
       refreshPhoto();
       if (first) loadAlbums();

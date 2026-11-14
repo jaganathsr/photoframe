@@ -1,41 +1,50 @@
 package com.jay.framehome;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
+import android.media.ExifInterface;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.text.SimpleDateFormat;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 
 /**
- * Photos from an Immich album. Config is a JSON file pushed by build.sh to the app's external
- * files dir: {"url": "...", "apiKey": "...", "albumId": "...", "intervalSeconds": 30}.
- * Previews are cached on the device so the slideshow keeps running if the NAS is unreachable.
+ * The slideshow's photo list and cache, independent of where photos come from (see
+ * {@link Providers}). Photos are prepared once (downscaled to screen size, rotated upright) and
+ * kept on the device, so the slideshow keeps running when the source is offline.
  * All methods except config() do network/disk I/O: call them off the main thread.
  */
 final class PhotoSource {
     private static final long REFRESH_MS = 15 * 60_000L;
     private static final int MAX_CACHED = 1500;
+    private static final int MAX_SIDE = 2048;
 
+    /** Legacy Immich config pushed by build.sh (immich.json); settings from the remote override it. */
     static final class Config {
         String url, apiKey, albumId;
         int intervalSeconds = 30;
-        boolean valid() { return url != null && apiKey != null && albumId != null; }
     }
 
     private static PhotoSource instance;
@@ -48,14 +57,13 @@ final class PhotoSource {
     private final Context ctx;
     private final File cacheDir;
     private final File listFile;
-    private Config config;
+    private final Random random = new Random();
+    private Providers.Provider provider;
     private List<String> ids = new ArrayList<>();
-    /** When each photo was taken (ms since epoch), for the recency boost. */
-    private final java.util.Map<String, Long> taken = new java.util.HashMap<>();
-    private final java.util.Random random = new java.util.Random();
+    private final Map<String, Long> taken = new HashMap<>();
     private final Deque<String> deck = new ArrayDeque<>();
     private long lastRefresh;
-    private String albumOfList;
+    private String keyOfList;
     private String lastError;
 
     private PhotoSource(Context c) {
@@ -63,23 +71,20 @@ final class PhotoSource {
         cacheDir = new File(c.getCacheDir(), "photos");
         cacheDir.mkdirs();
         listFile = new File(c.getFilesDir(), "album.json");
-    }
-
-    synchronized Config config() {
-        if (config == null) config = loadConfig(ctx);
-        return config;
+        readList();
     }
 
     static Config loadConfig(Context c) {
         Config cfg = new Config();
         try {
             File f = new File(c.getExternalFilesDir(null), "immich.json");
-            JSONObject o = new JSONObject(new String(readAll(new FileInputStream(f)), StandardCharsets.UTF_8));
+            JSONObject o = new JSONObject(new String(Providers.readAll(new FileInputStream(f)), StandardCharsets.UTF_8));
             cfg.url = o.optString("url", "").replaceAll("/+$", "");
             cfg.apiKey = o.optString("apiKey", null);
             cfg.albumId = o.optString("albumId", null);
             cfg.intervalSeconds = Math.max(5, o.optInt("intervalSeconds", 30));
             if (cfg.url.isEmpty()) cfg.url = null;
+            if (cfg.albumId != null && cfg.albumId.isEmpty()) cfg.albumId = null;
         } catch (Exception ignored) {
         }
         return cfg;
@@ -87,15 +92,13 @@ final class PhotoSource {
 
     synchronized String lastError() { return lastError; }
 
-    synchronized int count() { return ids.isEmpty() ? cachedIds().size() : ids.size(); }
+    synchronized int count() { return ids.size(); }
 
-    /** Settings changed (album/order) or user asked to reload: fetch the list again soon. */
+    /** Source settings changed or the user asked to reload: rebuild the provider and list. */
     synchronized void invalidate() {
-        config = null;
-        ids = new ArrayList<>();
-        deck.clear();
+        if (provider != null) provider.close();
+        provider = null;
         lastRefresh = 0;
-        albumOfList = null;
     }
 
     /** Settings that only affect ordering changed: start a fresh pass with the new order. */
@@ -103,110 +106,167 @@ final class PhotoSource {
         deck.clear();
     }
 
-    /** Next photo to show, as a cached file, or null if nothing is available at all. */
+    private Providers.Provider provider() {
+        if (provider == null) provider = Providers.fromSettings(ctx);
+        return provider;
+    }
+
+    /** Next photo to show, as a prepared file, or null if nothing is available at all. */
     synchronized File next() {
         refreshIfDue();
         for (int attempts = 0; attempts < 5; attempts++) {
             if (deck.isEmpty()) {
-                List<String> list = new ArrayList<>(ids.isEmpty() ? cachedIds() : ids);
+                List<String> list = new ArrayList<>(ids);
                 if (list.isEmpty()) return null;
-                if ("shuffle".equals(Prefs.order(ctx))) list = recencyShuffle(list);
+                if ("shuffle".equals(Prefs.order(ctx))) {
+                    list = recencyShuffle(list);
+                } else {
+                    final int dir = "oldest".equals(Prefs.order(ctx)) ? 1 : -1;
+                    list.sort((a, b) -> dir * Long.compare(takenOf(a), takenOf(b)));
+                }
                 deck.addAll(list);
             }
-            String id = deck.poll();
-            File f = fetch(id);
+            File f = prepared(deck.poll());
             if (f != null) return f;
         }
         return null;
     }
 
+    private long takenOf(String id) {
+        Long t = taken.get(id);
+        return t == null ? 0 : t;
+    }
+
     private void refreshIfDue() {
-        if (!ids.isEmpty() && System.currentTimeMillis() - lastRefresh < REFRESH_MS) return;
-        Config cfg = config();
-        String album = Prefs.albumId(ctx);
-        if (album != null) cfg.albumId = album;
-        if (!cfg.valid()) {
-            lastError = "Immich is not configured";
-            if (ids.isEmpty()) ids = readList();
-            return;
-        }
+        Providers.Provider p = provider();
+        boolean sourceChanged = !p.key().equals(keyOfList);
+        if (!sourceChanged && !ids.isEmpty() && System.currentTimeMillis() - lastRefresh < REFRESH_MS) return;
         try {
-            List<String> fresh = new ArrayList<>();
-            int page = 1;
-            while (page > 0) {
-                JSONObject body = new JSONObject()
-                        .put("albumIds", new JSONArray().put(cfg.albumId))
-                        .put("type", "IMAGE").put("size", 1000).put("page", page)
-                        .put("order", "oldest".equals(Prefs.order(ctx)) ? "asc" : "desc");
-                JSONObject res = new JSONObject(new String(
-                        request(cfg, "POST", "/api/search/metadata", body.toString()),
-                        StandardCharsets.UTF_8)).getJSONObject("assets");
-                JSONArray items = res.getJSONArray("items");
-                for (int i = 0; i < items.length(); i++) {
-                    JSONObject a = items.getJSONObject(i);
-                    String id = a.getString("id");
-                    fresh.add(id);
-                    long t = parseTime(a.optString("fileCreatedAt", ""));
-                    if (t > 0) taken.put(id, t);
-                }
-                String nxt = res.optString("nextPage", "");
-                page = (nxt.isEmpty() || "null".equals(nxt)) ? 0 : Integer.parseInt(nxt);
+            List<Providers.Photo> photos = p.list();
+            List<String> fresh = new ArrayList<>(photos.size());
+            for (Providers.Photo ph : photos) {
+                fresh.add(ph.id);
+                // Keep a better date (from EXIF) found earlier; otherwise use the source's date.
+                if (ph.taken > 0 && (!taken.containsKey(ph.id) || sourceChanged)) taken.put(ph.id, ph.taken);
             }
-            boolean changed = !fresh.equals(ids) || !cfg.albumId.equals(albumOfList);
             List<String> previous = ids;
-            String albumBefore = albumOfList;
             ids = fresh;
-            albumOfList = cfg.albumId;
             lastRefresh = System.currentTimeMillis();
             lastError = null;
-            if (changed) {
-                writeList(fresh);
-                if (!cfg.albumId.equals(albumBefore)) {
-                    deck.clear(); // different album: start over
-                } else if (!deck.isEmpty()) {
-                    // Same album, photos added/removed: keep the current pass (so every photo is
-                    // still shown), drop removed ones, and show newly added photos soon.
-                    java.util.Set<String> now = new java.util.HashSet<>(fresh);
-                    deck.removeIf(id -> !now.contains(id));
-                    java.util.Set<String> before = new java.util.HashSet<>(previous);
-                    for (String id : fresh) if (!before.contains(id)) deck.addFirst(id);
-                }
+            if (sourceChanged) {
+                deck.clear();
+                keyOfList = p.key();
+                writeList();
+            } else if (!fresh.equals(previous)) {
+                // Photos added/removed: keep the current pass so every photo is still shown, drop
+                // removed ones, and show newly added photos soon.
+                Set<String> now = new HashSet<>(fresh);
+                deck.removeIf(id -> !now.contains(id));
+                Set<String> before = new HashSet<>(previous);
+                for (String id : fresh) if (!before.contains(id)) deck.addFirst(id);
+                writeList();
             }
         } catch (Exception e) {
-            lastError = "Can't reach Immich: " + e.getMessage();
+            lastError = "Can't read photos: " + e.getMessage();
             lastRefresh = System.currentTimeMillis() - REFRESH_MS + 60_000L; // retry in a minute
-            if (ids.isEmpty()) ids = readList();
+            p.close(); // reconnect next time
         }
     }
 
-    private File fetch(String id) {
-        File f = new File(cacheDir, id + ".jpg");
+    /** Cached, screen-ready file for a photo; prepares (downloads/scales/rotates) it if needed. */
+    private File prepared(String id) {
+        if (id == null) return null;
+        Providers.Provider p = provider();
+        File f = new File(cacheDir, cacheName(p, id));
         if (f.length() > 0) {
             f.setLastModified(System.currentTimeMillis());
             return f;
         }
-        Config cfg = config();
-        if (!cfg.valid()) return null;
+        File tmp = new File(cacheDir, f.getName() + ".tmp");
         try {
-            byte[] data = request(cfg, "GET", "/api/assets/" + id + "/thumbnail?size=preview", null);
-            File tmp = new File(cacheDir, id + ".tmp");
-            try (OutputStream out = new FileOutputStream(tmp)) {
-                out.write(data);
+            p.download(new Providers.Photo(id, takenOf(id)), tmp);
+            if (!p.readyToShow()) {
+                long exifTime = exifTaken(tmp);
+                if (exifTime > 0) taken.put(id, exifTime);
+                if (!normalize(tmp, f)) return null;
+            } else if (!tmp.renameTo(f)) {
+                return null;
             }
-            if (!tmp.renameTo(f)) return null;
             trimCache();
             return f;
         } catch (Exception e) {
             lastError = "Can't load photo: " + e.getMessage();
+            if (!p.readyToShow()) p.close(); // reconnect next time (e.g. SMB session dropped)
             return null;
+        } finally {
+            tmp.delete();
         }
     }
 
-    private List<String> cachedIds() {
-        List<String> out = new ArrayList<>();
-        String[] names = cacheDir.list();
-        if (names != null) for (String n : names) if (n.endsWith(".jpg")) out.add(n.substring(0, n.length() - 4));
-        return out;
+    /** Immich assets keep their id as the file name; other sources use a hash of source+path. */
+    private static String cacheName(Providers.Provider p, String id) {
+        if (p instanceof Providers.ImmichProvider) return id + ".jpg";
+        try {
+            byte[] d = MessageDigest.getInstance("SHA-1").digest((p.key() + "|" + id).getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder("f");
+            for (int i = 0; i < 12; i++) sb.append(String.format(Locale.ROOT, "%02x", d[i]));
+            return sb.append(".jpg").toString();
+        } catch (Exception e) {
+            return Integer.toHexString((p.key() + id).hashCode()) + ".jpg";
+        }
+    }
+
+    /** Downscales to at most MAX_SIDE, applies EXIF rotation, saves as JPEG. */
+    private static boolean normalize(File src, File dest) throws Exception {
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(src.getPath(), o);
+        if (o.outWidth <= 0) return false;
+        int sample = 1;
+        while (Math.max(o.outWidth, o.outHeight) / (sample * 2) >= MAX_SIDE) sample *= 2;
+        o.inJustDecodeBounds = false;
+        o.inSampleSize = sample;
+        Bitmap bmp = BitmapFactory.decodeFile(src.getPath(), o);
+        if (bmp == null) return false;
+        Matrix m = new Matrix();
+        float scale = Math.min(1f, (float) MAX_SIDE / Math.max(bmp.getWidth(), bmp.getHeight()));
+        if (scale < 1f) m.postScale(scale, scale);
+        int rotation = 0;
+        boolean flip = false;
+        try {
+            switch (new ExifInterface(src.getPath()).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+                case ExifInterface.ORIENTATION_ROTATE_90: rotation = 90; break;
+                case ExifInterface.ORIENTATION_ROTATE_180: rotation = 180; break;
+                case ExifInterface.ORIENTATION_ROTATE_270: rotation = 270; break;
+                case ExifInterface.ORIENTATION_FLIP_HORIZONTAL: flip = true; break;
+                default: break;
+            }
+        } catch (Exception ignored) {
+        }
+        if (flip) m.postScale(-1, 1);
+        if (rotation != 0) m.postRotate(rotation);
+        Bitmap out = m.isIdentity() ? bmp
+                : Bitmap.createBitmap(bmp, 0, 0, bmp.getWidth(), bmp.getHeight(), m, true);
+        File tmp = new File(dest.getPath() + ".part");
+        try (OutputStream os = new FileOutputStream(tmp)) {
+            out.compress(Bitmap.CompressFormat.JPEG, 88, os);
+        } finally {
+            if (out != bmp) out.recycle();
+            bmp.recycle();
+        }
+        return tmp.renameTo(dest);
+    }
+
+    private static long exifTaken(File f) {
+        try {
+            String s = new ExifInterface(f.getPath()).getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL);
+            if (s == null) return 0;
+            java.util.Date d = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.ROOT).parse(s);
+            return d == null ? 0 : d.getTime();
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     private void trimCache() {
@@ -216,47 +276,50 @@ final class PhotoSource {
         for (int i = 0; i < files.length - MAX_CACHED; i++) files[i].delete();
     }
 
-    private List<String> readList() {
-        List<String> out = new ArrayList<>();
+    // ------------------------------------------------------------------ persistence
+
+    private void readList() {
         try {
-            JSONArray a = new JSONArray(new String(readAll(new FileInputStream(listFile)), StandardCharsets.UTF_8));
+            String raw = new String(Providers.readAll(new FileInputStream(listFile)), StandardCharsets.UTF_8);
+            JSONArray a;
+            if (raw.trim().startsWith("{")) {
+                JSONObject o = new JSONObject(raw);
+                keyOfList = o.optString("source", null);
+                a = o.getJSONArray("photos");
+            } else {
+                a = new JSONArray(raw); // older format (Immich only)
+            }
             for (int i = 0; i < a.length(); i++) {
-                Object o = a.get(i);
-                if (o instanceof JSONObject) {
-                    String id = ((JSONObject) o).getString("id");
-                    out.add(id);
-                    long t = ((JSONObject) o).optLong("t", 0);
+                Object item = a.get(i);
+                if (item instanceof JSONObject) {
+                    String id = ((JSONObject) item).getString("id");
+                    ids.add(id);
+                    long t = ((JSONObject) item).optLong("t", 0);
                     if (t > 0) taken.put(id, t);
                 } else {
-                    out.add(String.valueOf(o)); // older format: ids only
+                    ids.add(String.valueOf(item));
                 }
             }
         } catch (Exception ignored) {
         }
-        return out;
     }
 
-    private void writeList(List<String> list) {
+    private void writeList() {
         try (OutputStream out = new FileOutputStream(listFile)) {
             JSONArray a = new JSONArray();
-            for (String id : list) {
+            for (String id : ids) {
                 JSONObject o = new JSONObject().put("id", id);
                 Long t = taken.get(id);
                 if (t != null) o.put("t", t);
                 a.put(o);
             }
-            out.write(a.toString().getBytes(StandardCharsets.UTF_8));
+            JSONObject root = new JSONObject().put("source", keyOfList == null ? "" : keyOfList).put("photos", a);
+            out.write(root.toString().getBytes(StandardCharsets.UTF_8));
         } catch (Exception ignored) {
         }
     }
 
-    private static long parseTime(String iso) {
-        try {
-            return java.time.Instant.parse(iso).toEpochMilli();
-        } catch (Exception e) {
-            return 0;
-        }
-    }
+    // ------------------------------------------------------------------ recency-biased shuffle
 
     /**
      * One pass through the album, shuffled with a bias towards recent photos. Every photo appears
@@ -287,16 +350,14 @@ final class PhotoSource {
             for (int c = 0; c < copies; c++) {
                 Slot s = new Slot();
                 s.id = id;
-                // Weighted random order (higher weight -> earlier on average).
-                s.key = Math.pow(random.nextDouble(), 1.0 / weight);
+                s.key = Math.pow(random.nextDouble(), 1.0 / weight); // weighted random order
                 slots.add(s);
             }
         }
         slots.sort((a, b) -> Double.compare(b.key, a.key));
-        // Keep repeats of the same photo well apart.
         int gap = Math.max(1, Math.min(40, list.size() / 3));
         List<String> out = new ArrayList<>(), later = new ArrayList<>();
-        java.util.Map<String, Integer> lastAt = new java.util.HashMap<>();
+        Map<String, Integer> lastAt = new HashMap<>();
         for (Slot s : slots) {
             Integer last = lastAt.get(s.id);
             if (last != null && out.size() - last < gap) {
@@ -314,41 +375,5 @@ final class PhotoSource {
             }
         }
         return out;
-    }
-
-    private static byte[] request(Config cfg, String method, String path, String jsonBody) throws Exception {
-        HttpURLConnection c = (HttpURLConnection) new URL(cfg.url + path).openConnection();
-        c.setConnectTimeout(10_000);
-        c.setReadTimeout(30_000);
-        c.setRequestMethod(method);
-        c.setRequestProperty("x-api-key", cfg.apiKey);
-        c.setRequestProperty("Accept", "application/json");
-        if (jsonBody != null) {
-            c.setDoOutput(true);
-            c.setRequestProperty("Content-Type", "application/json");
-            try (OutputStream out = c.getOutputStream()) {
-                out.write(jsonBody.getBytes(StandardCharsets.UTF_8));
-            }
-        }
-        int code = c.getResponseCode();
-        if (code / 100 != 2) {
-            c.disconnect();
-            throw new Exception("HTTP " + code);
-        }
-        try (InputStream in = c.getInputStream()) {
-            return readAll(in);
-        } finally {
-            c.disconnect();
-        }
-    }
-
-    private static byte[] readAll(InputStream in) throws Exception {
-        try (InputStream is = in) {
-            ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            byte[] buf = new byte[64 * 1024];
-            int n;
-            while ((n = is.read(buf)) > 0) bos.write(buf, 0, n);
-            return bos.toByteArray();
-        }
     }
 }

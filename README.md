@@ -4,11 +4,15 @@ A replacement home screen and photo slideshow for old Android photo frames, buil
 **Lenovo Smart Frame (CD-3L501F)**, whose official software and Google Photos sync are no longer
 supported.
 
-> Work in progress. Today it shows photos from an [Immich](https://immich.app) server; local
-> folders and LAN file shares are planned.
+> Work in progress.
 
 ## Features
 
+- Photo sources, chosen from the phone remote with a **Test & save** check:
+  - [Immich](https://immich.app) album (uses Immich's screen-sized previews)
+  - a folder on the frame (internal storage or a USB stick, with a folder browser)
+  - a network share over **SMB** (Windows PCs, Synology/QNAP/TrueNAS, Samba), guest or login
+  - photos from folders and shares are downscaled, rotated upright (EXIF) and cached on the frame
 - Full-screen slideshow: crossfade / slide / zoom / Ken Burns transitions, shuffle with an optional
   bias towards recent photos, adjustable photo duration, clock overlay, offline cache.
 - Sleep and wake schedule (screen off at night, back on in the morning).
@@ -21,13 +25,13 @@ supported.
 ## Requirements
 
 - An Android 10+ frame or tablet with **USB debugging** enabled (Developer options).
-- A Linux/macOS computer with the Android SDK (build-tools 35, platform 35) and a JDK 11+.
+- A Linux/macOS computer with the Android SDK (build-tools 35, platform 35), a JDK 11+, and `curl`.
 
 ## Quick start
 
 ```bash
 cd framehome
-cp frame.env.example frame.env      # fill in your frame IP and Immich details
+cp frame.env.example frame.env      # fill in your frame IP (Immich details optional)
 ./build.sh install                  # over USB (or Wi-Fi ADB)
 ```
 
@@ -38,7 +42,11 @@ adb shell dpm set-device-owner com.jay.framehome/.AdminReceiver
 ./build.sh remote                   # later updates over Wi-Fi, no cable
 ```
 
-Then open `http://<frame-ip>:8080` on your phone and enter the PIN shown on the frame.
+Then open `http://<frame-ip>:8080` on your phone, enter the PIN shown on the frame, and pick a
+photo source under **Photo source**.
+
+The first build downloads the SMB library ([smbj](https://github.com/hierynomus/smbj)) and its
+dependencies from Maven Central into `framehome/libs/`, checked against pinned SHA-256 hashes.
 
 > On recent Android phones, Chrome/Brave need the **Nearby devices** permission to open pages on
 > your home network.

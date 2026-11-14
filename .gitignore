@@ -11,3 +11,6 @@ build/
 *.idsig
 __pycache__/
 *.pyc
+
+# Downloaded build dependencies
+framehome/libs/

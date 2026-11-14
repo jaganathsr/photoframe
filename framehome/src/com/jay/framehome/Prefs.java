@@ -7,6 +7,8 @@ import android.provider.Settings;
 import org.json.JSONObject;
 
 import java.security.SecureRandom;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Every user-adjustable setting, with defaults and validation. Shared by the on-device screens
@@ -21,6 +23,96 @@ final class Prefs {
     private Prefs() {}
 
     private static SharedPreferences p(Context c) { return Schedule.prefs(c); }
+
+    static final String[] SOURCES = {"immich", "folder", "smb"};
+    static final String DEFAULT_FOLDER = "/sdcard/Pictures/Frame";
+
+    static String str(Context c, String key, String def) { return p(c).getString(key, def); }
+    static boolean bool(Context c, String key, boolean def) { return p(c).getBoolean(key, def); }
+
+    /** Photo source; defaults to Immich if it was configured by the installer, else a folder. */
+    static String source(Context c) {
+        String s = p(c).getString("source", null);
+        if (s != null) return s;
+        return PhotoSource.loadConfig(c).url != null ? "immich" : "folder";
+    }
+
+    /** Source settings for the web remote. Secrets are never sent back, only whether they're set. */
+    static JSONObject sourceJson(Context c) throws Exception {
+        PhotoSource.Config cfg = PhotoSource.loadConfig(c);
+        return new JSONObject()
+                .put("source", source(c))
+                .put("immichUrl", str(c, "immichUrl", cfg.url == null ? "" : cfg.url))
+                .put("immichKeySet", !str(c, "immichKey", cfg.apiKey == null ? "" : cfg.apiKey).isEmpty())
+                .put("folderPath", str(c, "folderPath", DEFAULT_FOLDER))
+                .put("smbHost", str(c, "smbHost", ""))
+                .put("smbShare", str(c, "smbShare", ""))
+                .put("smbPath", str(c, "smbPath", ""))
+                .put("smbUser", str(c, "smbUser", ""))
+                .put("smbDomain", str(c, "smbDomain", ""))
+                .put("smbPassSet", !str(c, "smbPass", "").isEmpty())
+                .put("recursive", bool(c, "recursive", true));
+    }
+
+    /**
+     * Tests a new photo source and saves it only if it works. Empty secret fields keep the saved
+     * value. Returns {ok, count} or {ok:false, error}.
+     */
+    static JSONObject testAndSaveSource(Context c, JSONObject o) throws Exception {
+        String source = o.optString("source", source(c));
+        boolean known = false;
+        for (String s : SOURCES) known |= s.equals(source);
+        if (!known) return new JSONObject().put("ok", false).put("error", "Unknown source");
+
+        // Build the candidate settings on top of the current ones.
+        Map<String, Object> next = new HashMap<>();
+        next.put("source", source);
+        for (String k : new String[]{"immichUrl", "folderPath", "smbHost", "smbShare", "smbPath", "smbUser", "smbDomain"}) {
+            if (o.has(k)) next.put(k, o.getString(k).trim());
+        }
+        for (String k : new String[]{"immichKey", "smbPass"}) {
+            if (o.has(k) && !o.getString(k).isEmpty()) next.put(k, o.getString(k));
+        }
+        if (o.has("recursive")) next.put("recursive", o.getBoolean("recursive"));
+
+        Map<String, ?> before = new HashMap<>(p(c).getAll());
+        SharedPreferences.Editor e = p(c).edit();
+        for (Map.Entry<String, Object> en : next.entrySet()) {
+            if (en.getValue() instanceof Boolean) e.putBoolean(en.getKey(), (Boolean) en.getValue());
+            else e.putString(en.getKey(), (String) en.getValue());
+        }
+        e.commit();
+        Providers.Provider candidate = Providers.fromSettings(c);
+        try {
+            if (candidate instanceof Providers.ImmichProvider) {
+                Providers.ImmichProvider im = (Providers.ImmichProvider) candidate;
+                im.albums(); // checks the server address and API key
+                if (im.albumId.isEmpty()) {
+                    PhotoSource.get(c).invalidate();
+                    return new JSONObject().put("ok", true).put("needsAlbum", true);
+                }
+            }
+            int count = candidate.list().size();
+            if (count == 0) throw new Exception("Connected, but found no photos there");
+            PhotoSource.get(c).invalidate();
+            SlideshowView.broadcast("reload");
+            return new JSONObject().put("ok", true).put("count", count);
+        } catch (Exception ex) {
+            // Roll back so a typo doesn't break a working slideshow.
+            SharedPreferences.Editor r = p(c).edit();
+            for (String k : next.keySet()) {
+                Object old = before.get(k);
+                if (old == null) r.remove(k);
+                else if (old instanceof Boolean) r.putBoolean(k, (Boolean) old);
+                else r.putString(k, String.valueOf(old));
+            }
+            r.commit();
+            String msg = ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
+            return new JSONObject().put("ok", false).put("error", msg);
+        } finally {
+            candidate.close();
+        }
+    }
 
     static int intervalSeconds(Context c) {
         return p(c).getInt("intervalSeconds", PhotoSource.loadConfig(c).intervalSeconds);

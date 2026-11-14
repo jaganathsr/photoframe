@@ -272,7 +272,8 @@ public class WebService extends Service {
         switch (r.path) {
             case "/api/state":
                 json(out, 200, new JSONObject().put("ok", true)
-                        .put("settings", Prefs.toJson(c)).put("status", status()));
+                        .put("settings", Prefs.toJson(c)).put("status", status())
+                        .put("sourceSettings", Prefs.sourceJson(c)));
                 return;
             case "/api/settings": {
                 if (!"POST".equals(r.method)) break;
@@ -298,6 +299,18 @@ public class WebService extends Service {
                         : err(e));
                 return;
             }
+            case "/api/source": {
+                if ("POST".equals(r.method)) {
+                    JSONObject res = Prefs.testAndSaveSource(c, new JSONObject(new String(r.body, StandardCharsets.UTF_8)));
+                    json(out, res.optBoolean("ok") ? 200 : 400, res.put("sourceSettings", Prefs.sourceJson(c)));
+                } else {
+                    json(out, 200, new JSONObject().put("ok", true).put("sourceSettings", Prefs.sourceJson(c)));
+                }
+                return;
+            }
+            case "/api/folders":
+                json(out, 200, folders(r.query.get("path")).put("ok", true));
+                return;
             case "/api/albums":
                 send(out, 200, "application/json; charset=utf-8", albums());
                 return;
@@ -509,27 +522,45 @@ public class WebService extends Service {
     }
 
     /** Immich albums for the album picker: [{id, name, count}]. */
-    private byte[] albums() throws Exception {
-        PhotoSource.Config cfg = PhotoSource.loadConfig(this);
-        if (!cfg.valid()) return "[]".getBytes(StandardCharsets.UTF_8);
-        HttpURLConnection conn = (HttpURLConnection) new URL(cfg.url + "/api/albums").openConnection();
-        conn.setConnectTimeout(8000);
-        conn.setReadTimeout(20000);
-        conn.setRequestProperty("x-api-key", cfg.apiKey);
-        conn.setRequestProperty("Accept", "application/json");
-        try (InputStream in = conn.getInputStream()) {
-            org.json.JSONArray src = new org.json.JSONArray(new String(readAll(in), StandardCharsets.UTF_8));
-            org.json.JSONArray outArr = new org.json.JSONArray();
-            for (int i = 0; i < src.length(); i++) {
-                JSONObject a = src.getJSONObject(i);
-                outArr.put(new JSONObject().put("id", a.getString("id"))
-                        .put("name", a.optString("albumName", "?"))
-                        .put("count", a.optInt("assetCount", 0)));
-            }
-            return outArr.toString().getBytes(StandardCharsets.UTF_8);
-        } finally {
-            conn.disconnect();
+    private byte[] albums() {
+        try {
+            return Providers.immichFromSettings(this).albums().toString().getBytes(StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return "[]".getBytes(StandardCharsets.UTF_8);
         }
+    }
+
+    /** Sub-folders of a path on the frame, for the folder picker. */
+    private JSONObject folders(String path) throws Exception {
+        java.util.List<String> roots = new java.util.ArrayList<>();
+        roots.add("/sdcard");
+        File[] mounts = new File("/storage").listFiles();
+        if (mounts != null) {
+            for (File m : mounts) {
+                if (!m.getName().equals("emulated") && !m.getName().equals("self") && m.canRead()) {
+                    roots.add(m.getPath()); // USB sticks and SD cards
+                }
+            }
+        }
+        org.json.JSONArray rootArr = new org.json.JSONArray(roots);
+        if (path == null || path.isEmpty()) {
+            return new JSONObject().put("path", "").put("roots", rootArr).put("folders", rootArr);
+        }
+        File dir = new File(path);
+        org.json.JSONArray subs = new org.json.JSONArray();
+        int images = 0;
+        File[] files = dir.listFiles();
+        if (files != null) {
+            java.util.Arrays.sort(files, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+            for (File f : files) {
+                if (f.isDirectory() && !f.getName().startsWith(".")) subs.put(f.getPath());
+                else if (Providers.isImage(f.getName())) images++;
+            }
+        }
+        String parent = dir.getParent();
+        return new JSONObject().put("path", dir.getPath()).put("parent", parent == null ? "" : parent)
+                .put("roots", rootArr).put("folders", subs).put("images", images)
+                .put("readable", dir.canRead());
     }
 
     private byte[] readRaw(int id) throws Exception {

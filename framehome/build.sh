@@ -17,6 +17,30 @@ ADB="$SDK/platform-tools/adb"
 JAVAC="${JAVA_HOME:+$JAVA_HOME/bin/}javac"
 PKG=com.jay.framehome
 
+# Third-party libraries (SMB support), downloaded from Maven Central and checked against pinned
+# SHA-256 hashes. smbj 0.15.0 and the exact dependency versions it declares.
+LIBS=(
+  "com/hierynomus smbj 0.15.0 af60f2ada54e51e3c511bbff292af516f9cfc007630aa7a53ccc1409403800fe"
+  "com/hierynomus asn-one 0.6.0 e4f70fd92849b52240048b8ebace0c9a17d3bb7b9c882b3c7778cec3458495f5"
+  "org/bouncycastle bcprov-jdk18on 1.85.2 986b0fb92ec10e0c66b43e036ce0077e6150cfaecd1db9fb92b56672e157afe5"
+  "org/slf4j slf4j-api 2.0.18 44508fd1576500688c790b190acdd16fec4f8c79a3e0b900afd70503cf055f55"
+  "net/engio mbassador 1.3.2 469e2e9c68271eadaff12483bbb1abc640ea9973af7fa0519250e04f503aca67"
+)
+mkdir -p libs
+JARS=()
+for spec in "${LIBS[@]}"; do
+    read -r group artifact version sha <<<"$spec"
+    jar="libs/$artifact-$version.jar"
+    if [ ! -f "$jar" ]; then
+        echo "Downloading $artifact $version"
+        curl -fsSL -o "$jar.part" "https://repo1.maven.org/maven2/$group/$artifact/$version/$artifact-$version.jar"
+        mv "$jar.part" "$jar"
+    fi
+    echo "$sha  $jar" | sha256sum -c --quiet || { echo "Checksum mismatch for $jar"; rm -f "$jar"; exit 1; }
+    JARS+=("$jar")
+done
+CLASSPATH="$PLATFORM:$(IFS=:; echo "${JARS[*]}")"
+
 rm -rf build && mkdir -p build/gen build/classes build/dex
 
 "$BT/aapt2" compile --dir res -o build/res.zip
@@ -24,13 +48,13 @@ rm -rf build && mkdir -p build/gen build/classes build/dex
     --min-sdk-version 29 --target-sdk-version 29 \
     --java build/gen -o build/unsigned.apk build/res.zip
 
-"$JAVAC" --release 11 -nowarn -Xlint:-options -classpath "$PLATFORM" -d build/classes \
+"$JAVAC" --release 11 -nowarn -Xlint:-options -classpath "$CLASSPATH" -d build/classes \
     $(find build/gen src -name '*.java')
 
 "$BT/d8" --release --min-api 29 --lib "$PLATFORM" --output build/dex \
-    $(find build/classes -name '*.class')
+    $(find build/classes -name '*.class') "${JARS[@]}" 2> >(grep -v -e "^Warning" -e "^$" -e "module-info" >&2 || true)
 
-(cd build/dex && zip -q ../unsigned.apk classes.dex)
+(cd build/dex && zip -q ../unsigned.apk classes*.dex)
 "$BT/zipalign" -f -p 4 build/unsigned.apk build/aligned.apk
 
 # Your own signing key, created on first build. Keep it private and keep a backup: the frame
@@ -68,6 +92,7 @@ if [ "${1:-}" = "install" ]; then
     "$ADB" shell dpm set-active-admin "$PKG/.AdminReceiver" || true
     "$ADB" shell appops set "$PKG" SYSTEM_ALERT_WINDOW allow
     "$ADB" shell appops set "$PKG" WRITE_SETTINGS allow
+    "$ADB" shell pm grant "$PKG" android.permission.READ_EXTERNAL_STORAGE || true
     "$ADB" shell cmd package set-home-activity "$PKG/.HomeActivity"
     # Enable the home-guard accessibility service, keeping any already-enabled services.
     SVC="$PKG/$PKG.HomeGuardService"
