@@ -371,6 +371,8 @@ public class WebService extends Service {
                 .put("address", String.valueOf(address()))
                 .put("adbWifi", adbWifiOn())
                 .put("deviceOwner", isDeviceOwner())
+                .put("canInstall", isDeviceOwner() || getPackageManager().canRequestPackageInstalls())
+                .put("setup", Setup.toJson(this))
                 .put("version", versionName());
         if (Schedule.enabled(this)) {
             o.put("nextSleep", Schedule.formatWhen(this, Schedule.nextOccurrence(Schedule.sleepMinute(this))));
@@ -399,7 +401,9 @@ public class WebService extends Service {
      * Frame Home signed with the same key, so the PIN can't be used to install other software.
      */
     private String receiveUpdate(Request r) throws Exception {
-        if (!isDeviceOwner()) return "Remote updates need Frame Home to be device owner";
+        if (!isDeviceOwner() && !getPackageManager().canRequestPackageInstalls()) {
+            return "On the frame, open Setup and allow \"Updates from the phone remote\" first";
+        }
         if (r.length <= 0 || r.length > 50 * 1024 * 1024) return "Upload an APK file (max 50 MB)";
         File apk = new File(getCacheDir(), "update.apk");
         try (OutputStream o = new java.io.FileOutputStream(apk)) {

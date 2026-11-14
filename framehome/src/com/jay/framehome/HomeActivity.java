@@ -22,6 +22,7 @@ public class HomeActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TextView status;
     private Button photos;
+    private Button setupTile;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -70,9 +71,10 @@ public class HomeActivity extends Activity {
         Button apps = Ui.tile(this, "Apps", "All installed apps",
                 v -> startActivity(new Intent(this, AppsActivity.class)));
         Button settings = Ui.tile(this, "Settings", "Android settings", v -> openSettings());
+        setupTile = Ui.tile(this, "Setup", "", v -> startActivity(new Intent(this, SetupActivity.class)));
 
-        Button[] tiles = {photos, schedule, apps, settings};
-        int perRow = portrait ? 2 : 4;
+        Button[] tiles = {photos, schedule, setupTile, apps, settings};
+        int perRow = portrait ? 3 : 5;
         int tileH = Ui.dp(this, portrait ? 170 : 150);
         int gap = Ui.dp(this, 10);
         for (int start = 0; start < tiles.length; start += perRow) {
@@ -100,6 +102,13 @@ public class HomeActivity extends Activity {
         Ui.immersive(this);
         Schedule.reschedule(this);
         updateStatus();
+        int left = Setup.remaining(this);
+        Ui.setTileText(setupTile, "Setup", left == 0 ? "All set ✓" : left + (left == 1 ? " step left" : " steps left"));
+        // First launch after a plain APK install: walk through the permissions on the frame.
+        if (!Setup.requiredDone(this) && !Schedule.prefs(this).getBoolean("setupShown", false)) {
+            startActivity(new Intent(this, SetupActivity.class));
+            return;
+        }
         maybeStartFotooAfterBoot();
         resetIdle();
     }

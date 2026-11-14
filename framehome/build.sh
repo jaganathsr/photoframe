@@ -3,6 +3,7 @@
 # Usage: ./build.sh            -> build only
 #        ./build.sh install    -> build, install over ADB, set as home, grant permissions
 #        ./build.sh remote     -> build and update the frame over Wi-Fi via its web remote
+#        ./build.sh release    -> build a versioned APK in dist/ for a GitHub release
 #
 # Settings come from frame.env next to this script (copy frame.env.example) or the environment.
 set -euo pipefail
@@ -69,6 +70,16 @@ fi
 "$BT/apksigner" sign --ks "$KEYSTORE" --ks-pass "pass:$KS_PASS" --key-pass "pass:$KS_PASS" \
     --out framehome.apk build/aligned.apk
 echo "Built $(pwd)/framehome.apk"
+
+if [ "${1:-}" = "release" ]; then
+    # Versioned APK for a GitHub release (upload dist/FrameHome-<version>.apk).
+    VERSION="$(sed -n 's/.*android:versionName="\([^"]*\)".*/\1/p' AndroidManifest.xml | head -1)"
+    mkdir -p dist
+    cp framehome.apk "dist/FrameHome-$VERSION.apk"
+    (cd dist && sha256sum "FrameHome-$VERSION.apk" > "FrameHome-$VERSION.apk.sha256")
+    echo "Release: $(pwd)/dist/FrameHome-$VERSION.apk"
+    exit 0
+fi
 
 if [ "${1:-}" = "remote" ]; then
     # Update over Wi-Fi through the frame's web remote (no ADB needed; requires device owner).

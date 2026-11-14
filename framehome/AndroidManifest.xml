@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.jay.framehome"
-    android:versionCode="10"
+    android:versionCode="11"
     android:versionName="3.0-dev">
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Updates sent from the phone remote (confirmed on the frame unless device owner). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Brightness control from the phone remote (granted by build.sh via appops). -->
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
     <!-- Lets the wake alarm bring Fotoo to the front from the background (Android 10 rule). -->
@@ -59,6 +61,7 @@
             </intent-filter>
         </service>
         <activity android:name=".AppsActivity" android:excludeFromRecents="true" />
+        <activity android:name=".SetupActivity" android:excludeFromRecents="true" />
 
         <activity
             android:name=".WakeActivity"

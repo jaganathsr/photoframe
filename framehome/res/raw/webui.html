@@ -449,8 +449,12 @@
   }
   $('browse').addEventListener('click', () => browse($('folderPath').value));
 
+  let lastStatus = null;
   function renderStatus(st) {
-    $('version').textContent = st.version + (st.deviceOwner ? '' : ' · remote updates unavailable');
+    lastStatus = st;
+    $('version').textContent = st.version + (st.deviceOwner ? ' · updates install silently'
+      : st.canInstall ? ' · updates need a confirm on the frame' : ' · allow updates in Setup on the frame');
+    $('restart').parentElement.hidden = !st.deviceOwner;
     $('state-line').textContent = !st.screenOn ? 'Asleep' : st.showing[0].toUpperCase() + st.showing.slice(1);
     const n = ($('source').value === 'immich' ? albumCounts[settings.albumId] : undefined) ?? st.photoCount;
     $('photo-count').textContent = `${n} photos`;
@@ -462,14 +466,15 @@
       ['Frame address', st.address],
       ['Wireless ADB', st.adbWifi ? 'On (port 5555)' : 'Off – needs USB + "adb tcpip 5555"'],
     ];
-    if (!st.hasAdmin) rows.push(['Problem', 'Screen-off permission missing']);
-    if (!st.canSetBrightness) rows.push(['Problem', 'Brightness permission missing']);
+    for (const it of (st.setup || [])) {
+      if (!it.done && it.level !== 'optional') rows.push(['Setup', `${it.title} – open Setup on the frame`]);
+    }
     if (st.lastError) rows.push(['Last error', st.lastError]);
     $('status').innerHTML = '';
     for (const [k, v] of rows) {
       const dt = document.createElement('dt'); dt.textContent = k;
       const dd = document.createElement('dd'); dd.textContent = v;
-      if (k === 'Problem' || k === 'Last error') dd.className = 'err';
+      if (k === 'Problem' || k === 'Last error' || k === 'Setup') dd.className = 'err';
       $('status').append(dt, dd);
     }
   }
@@ -570,7 +575,7 @@
         headers: { 'X-Pin': pin, 'Content-Type': 'application/vnd.android.package-archive' } });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.ok === false) throw new Error(data.error || `Error ${res.status}`);
-      toast('Installing – back in a few seconds');
+      toast(settings && lastStatus && !lastStatus.deviceOwner ? 'Uploaded – confirm "Install" on the frame' : 'Installing – back in a few seconds');
       setTimeout(() => refresh(), 15000);
     } catch (err) { toast(err.message, true); }
   });
