@@ -13,9 +13,14 @@ Keyboard basics on the frame: **arrow keys** move around, **Enter** selects, **E
 ## 1. Download and install Frame Home
 
 1. Plug the keyboard into the frame.
-2. Open a web browser on the frame and go to the project's **Releases** page. Download the latest `FrameHome-<version>.apk`.
-3. Open the downloaded file. Android asks whether the browser may install apps: choose **Settings**, turn on **Allow from this source**, press **Esc**, then choose **Install**.
-4. When it's installed, choose **Open**.
+2. Open the frame's **Settings**, then open the built-in web browser. Lenovo's screen has no app list, so go through Settings search:
+   - In Settings, open **search** (the magnifier) and type `browser`.
+   - Choose **Browser** (it says *App info* underneath), then choose **Open**.
+3. In the browser, go to the project's **Releases** page and download the latest `FrameHome-<version>.apk`.
+4. Open the downloaded file. Android asks whether the browser may install apps: choose **Settings**, turn on **Allow from this source**, press **Esc**, then choose **Install**.
+5. When it's installed, choose **Open**.
+
+This is how other apps (such as Chrome or the Amazon Appstore) can be installed on the frame too. Once Frame Home is installed, its **Apps** tile lists every app, so you won't need the Settings trick again.
 
 ## 2. Follow the Setup checklist on the frame
 
