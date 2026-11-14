@@ -12,6 +12,13 @@ Frame Home was built and tested on the **Lenovo Smart Frame**, model **CD-3L501F
 - sold around 2020–2021 as a Google Photos frame, set up with the *Lenovo Smart Frame* phone app
 - the model number is on the label on the back; in Android settings the model shows as **Lenovo CD-3L501F**
 
+<p>
+  <a href="https://www.lenovo.com/us/en/smart-frame/index.html"><img src="https://p1-ofp.static.pub/ShareResource/smart-frame/img/lenovo-smart-frame-whats-in-the-box-front.e8302792ca13a486.png" alt="Lenovo Smart Frame, front" height="240"></a>
+  &nbsp;&nbsp;
+  <a href="https://www.lenovo.com/us/en/smart-frame/index.html"><img src="https://p2-ofp.static.pub/ShareResource/smart-frame/img/lenovo-smart-frame-whats-in-the-box-rear-with-wall-mount.c369b848e73def00.png" alt="Lenovo Smart Frame, back with wall mount" height="240"></a>
+  <br><sub>Front and back of the Lenovo Smart Frame. Images © Lenovo, shown from <a href="https://www.lenovo.com/us/en/smart-frame/index.html">lenovo.com</a>.</sub>
+</p>
+
 ## Why this exists
 
 The Lenovo Smart Frame was a good piece of hardware sold as a Google Photos frame. Then two things happened:
