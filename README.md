@@ -4,6 +4,17 @@ A replacement home screen and photo slideshow for old Android photo frames, buil
 
 > Work in progress.
 
+## Why this exists
+
+The Lenovo Smart Frame was a good piece of hardware sold as a Google Photos frame. Then two things happened:
+
+- **Lenovo stopped supporting it.** No more software updates, and its companion app and cloud service no longer work, so the frame can't be set up or synced the official way.
+- **Google cut off third-party access to Google Photos.** Google's 2025 changes to the Photos API removed third-party apps' ability to read your library and shared albums. The official frame software and many third-party slideshow apps people switched to stopped syncing.
+
+The result: a working 21.5" screen that can't show your photos. Third-party apps were also fragile in other ways. One popular replacement depended on the Amazon Appstore's license check, and stopped launching after Amazon shut down its Appstore for Android devices.
+
+Frame Home takes the cloud dependency out. It replaces the frame's software with a home screen and slideshow that read photos from sources you control: your own Immich server, a network share, or a folder on the frame. Everything is configured from a page on your phone.
+
 ## Features
 
 - Photo sources, chosen from your phone with a **Test & save** check:
