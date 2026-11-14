@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e0f13">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Photo Frame</title>
+<style>
+  :root {
+    --bg: #f4f5f8; --card: #ffffff; --text: #16181d; --muted: #6b7280; --line: #e4e6eb;
+    --accent: #3d6fe0; --accent-ink: #ffffff; --danger: #c2410c; --ok: #15803d; --chip: #eef1f7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e0f13; --card: #181a20; --text: #f1f2f5; --muted: #9aa0ae; --line: #2a2e38;
+      --accent: #5b8cff; --accent-ink: #0b1020; --danger: #fb923c; --ok: #4ade80; --chip: #222631;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: env(safe-area-inset-top) 16px calc(24px + env(safe-area-inset-bottom));
+    -webkit-tap-highlight-color: transparent;
+  }
+  main { max-width: 640px; margin: 0 auto; }
+  header { display: flex; align-items: baseline; justify-content: space-between; padding: 20px 2px 8px; }
+  h1 { font-size: 24px; margin: 0; letter-spacing: -0.01em; }
+  #state-line { color: var(--muted); font-size: 14px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+       margin: 24px 4px 8px; font-weight: 600; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+         padding: 14px 16px; border-top: 1px solid var(--line); min-height: 56px; }
+  .row:first-child { border-top: 0; }
+  .row label, .row .label { flex: 1; }
+  .row label.switch { flex: none; }
+  .hint { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+  select, input[type=time], input[type=number] {
+    font: inherit; color: var(--text); background: var(--chip); border: 1px solid var(--line);
+    border-radius: 10px; padding: 8px 10px; max-width: 55%;
+  }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .stack { display: block; }
+  .stack .top { display: flex; justify-content: space-between; margin-bottom: 8px; }
+  .value { color: var(--muted); font-variant-numeric: tabular-nums; }
+  /* switch */
+  .switch { position: relative; width: 52px; height: 32px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .switch span { position: absolute; inset: 0; background: var(--line); border-radius: 32px; transition: .2s; }
+  .switch span::after { content: ""; position: absolute; width: 26px; height: 26px; left: 3px; top: 3px;
+                        border-radius: 50%; background: #fff; transition: .2s; box-shadow: 0 1px 3px #0004; }
+  .switch input:checked + span { background: var(--accent); }
+  .switch input:checked + span::after { transform: translateX(20px); }
+  .switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* preview + controls */
+  .preview { position: relative; aspect-ratio: 16 / 9; background: #000; display: grid; place-items: center; }
+  .preview { overflow: hidden; }
+  .preview img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
+  .preview .empty { color: #9aa0ae; font-size: 14px; position: absolute; }
+  .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 12px; }
+  button {
+    font: inherit; border: 1px solid var(--line); background: var(--chip); color: var(--text);
+    border-radius: 12px; padding: 12px 8px; min-height: 48px; cursor: pointer;
+  }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+  button:active { transform: scale(.98); }
+  button:disabled { opacity: .5; }
+  .wide { grid-column: span 3; }
+  .status { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; padding: 14px 16px; font-size: 14px; }
+  .status dt { color: var(--muted); }
+  .status dd { margin: 0; text-align: right; }
+  .err { color: var(--danger); }
+  #toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(120%);
+           background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: 14px;
+           transition: transform .25s, opacity .25s; pointer-events: none; z-index: 10; opacity: 0; }
+  #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+  /* PIN screen */
+  #pin-screen { max-width: 360px; margin: 18vh auto 0; text-align: center; }
+  #pin-screen input { font-size: 32px; letter-spacing: .4em; text-align: center; width: 180px; padding: 10px;
+                      border-radius: 14px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
+  #pin-screen p { color: var(--muted); }
+  [hidden] { display: none !important; }
+  .upload-btn { flex: none; border: 1px solid var(--line); background: var(--chip); border-radius: 12px;
+                padding: 8px 14px; min-height: 40px; display: inline-flex; align-items: center; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="pin-screen" hidden>
+  <h1>Photo Frame</h1>
+  <p>Enter the 4-digit PIN shown on the frame's home screen.</p>
+  <form id="pin-form">
+    <input id="pin-input" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="one-time-code" autofocus>
+    <p><button class="primary" type="submit" style="width:180px">Connect</button></p>
+    <p id="pin-error" class="err"></p>
+  </form>
+</div>
+
+<main id="app" hidden>
+  <header>
+    <h1>Photo Frame</h1>
+    <span id="state-line">…</span>
+  </header>
+
+  <div class="card">
+    <div class="preview">
+      <img id="current" alt="Photo on the frame now">
+      <span class="empty" id="no-photo">No photo showing</span>
+    </div>
+    <div class="controls">
+      <button data-action="prev" aria-label="Previous photo">‹ Previous</button>
+      <button data-action="start" class="primary">Slideshow</button>
+      <button data-action="next" aria-label="Next photo">Next ›</button>
+      <button data-action="home">Home screen</button>
+      <button data-action="sleep">Sleep now</button>
+      <button data-action="wake">Wake</button>
+    </div>
+  </div>
+
+  <h2>Slideshow</h2>
+  <div class="card">
+    <div class="row stack">
+      <div class="top"><span class="label">Each photo stays for</span><span class="value" id="interval-val"></span></div>
+      <input type="range" id="intervalIdx" min="0" max="15" step="1" aria-label="Photo duration">
+    </div>
+    <div class="row">
+      <label for="transition">Transition</label>
+      <select id="transition">
+        <option value="crossfade">Crossfade</option>
+        <option value="slide">Slide</option>
+        <option value="zoom">Zoom</option>
+        <option value="kenburns">Ken Burns (slow pan & zoom)</option>
+        <option value="none">None (instant)</option>
+      </select>
+    </div>
+    <div class="row stack">
+      <div class="top"><span class="label">Transition speed</span><span class="value" id="transitionMs-val"></span></div>
+      <input type="range" id="transitionMs" min="200" max="4000" step="100" aria-label="Transition speed">
+    </div>
+    <div class="row">
+      <label for="order">Order</label>
+      <select id="order">
+        <option value="shuffle">Shuffle</option>
+        <option value="newest">Newest first</option>
+        <option value="oldest">Oldest first</option>
+      </select>
+    </div>
+    <div class="row" id="recency-row">
+      <label for="recency">Favor recent photos<span class="hint">Newer photos come up more often; every photo is still shown</span></label>
+      <select id="recency">
+        <option value="off">Off</option>
+        <option value="slight">Slight</option>
+        <option value="moderate">Moderate</option>
+        <option value="strong">Strong</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="fit">Photo fit<span class="hint">Smart fills the screen unless that would crop a lot</span></label>
+      <select id="fit">
+        <option value="smart">Smart</option>
+        <option value="fill">Fill screen</option>
+        <option value="fit">Whole photo</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="showClock">Show clock</label>
+      <label class="switch"><input type="checkbox" id="showClock"><span></span></label>
+    </div>
+    <div class="row">
+      <label for="albumId">Album</label>
+      <select id="albumId"><option>Loading…</option></select>
+    </div>
+    <div class="row">
+      <span class="label">Photos in album<span class="hint" id="photo-count"></span></span>
+      <button data-action="reload" style="min-height:40px;padding:8px 14px">Reload</button>
+    </div>
+  </div>
+
+  <h2>Schedule</h2>
+  <div class="card">
+    <div class="row">
+      <label for="scheduleEnabled">Sleep and wake automatically</label>
+      <label class="switch"><input type="checkbox" id="scheduleEnabled"><span></span></label>
+    </div>
+    <div class="row"><label for="sleepTime">Screen off at</label><input type="time" id="sleepTime"></div>
+    <div class="row"><label for="wakeTime">Screen on at</label><input type="time" id="wakeTime"></div>
+    <div class="row">
+      <label for="slideshowOnWake">Start slideshow when waking</label>
+      <label class="switch"><input type="checkbox" id="slideshowOnWake"><span></span></label>
+    </div>
+    <div class="row">
+      <label for="slideshowOnBoot">Start slideshow after power-on</label>
+      <label class="switch"><input type="checkbox" id="slideshowOnBoot"><span></span></label>
+    </div>
+    <div class="row">
+      <label for="idleMinutes">Back to slideshow when idle<span class="hint">From the frame's home screen</span></label>
+      <select id="idleMinutes">
+        <option value="0">Never</option><option value="1">1 minute</option><option value="2">2 minutes</option>
+        <option value="5">5 minutes</option><option value="10">10 minutes</option><option value="30">30 minutes</option>
+      </select>
+    </div>
+  </div>
+
+  <h2>Display</h2>
+  <div class="card">
+    <div class="row">
+      <label for="autoBrightness">Automatic brightness</label>
+      <label class="switch"><input type="checkbox" id="autoBrightness"><span></span></label>
+    </div>
+    <div class="row stack" id="brightness-row">
+      <div class="top"><span class="label">Brightness</span><span class="value" id="brightness-val"></span></div>
+      <input type="range" id="brightness" min="1" max="100" step="1" aria-label="Brightness">
+    </div>
+  </div>
+
+  <h2>Maintenance</h2>
+  <div class="card">
+    <div class="row">
+      <span class="label">Frame Home version<span class="hint" id="version">…</span></span>
+      <label class="upload-btn" for="apk">Update…</label>
+      <input type="file" id="apk" accept=".apk,application/vnd.android.package-archive" hidden>
+    </div>
+    <div class="row">
+      <span class="label">Restart the frame<span class="hint">Takes about a minute. Wireless ADB turns off.</span></span>
+      <button id="restart" style="min-height:40px;padding:8px 14px">Restart</button>
+    </div>
+  </div>
+
+  <h2>Status</h2>
+  <div class="card">
+    <dl class="status" id="status"></dl>
+  </div>
+</main>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const INTERVALS = [5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 300, 600, 900, 1800, 3600, 7200];
+  let pin = null;
+  try { pin = localStorage.getItem('frame-pin'); } catch (e) {}
+  let settings = {};
+  const albumCounts = {};
+  let busy = false;
+
+  const fmtDuration = (s) => s < 60 ? `${s} seconds` : s < 3600 ? `${s / 60} minute${s === 60 ? '' : 's'}`
+    : `${s / 3600} hour${s === 3600 ? '' : 's'}`;
+  const nearestIdx = (s) => INTERVALS.reduce((b, v, i) => Math.abs(v - s) < Math.abs(INTERVALS[b] - s) ? i : b, 0);
+
+  function toast(msg, isError) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.style.background = isError ? 'var(--danger)' : '';
+    t.classList.add('show');
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => t.classList.remove('show'), 1800);
+  }
+
+  async function api(path, opts = {}) {
+    const res = await fetch(path, { ...opts, headers: { 'X-Pin': pin || '', 'Content-Type': 'application/json' } });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401 || res.status === 429) {
+      showPin(data.error || 'Wrong PIN');
+      throw new Error('auth');
+    }
+    if (!res.ok || data.ok === false) throw new Error(data.error || `Error ${res.status}`);
+    return data;
+  }
+
+  function showPin(error) {
+    $('app').hidden = true;
+    $('pin-screen').hidden = false;
+    $('pin-error').textContent = error || '';
+    $('pin-input').value = '';
+    $('pin-input').focus();
+  }
+
+  $('pin-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    pin = $('pin-input').value.trim();
+    try { localStorage.setItem('frame-pin', pin); } catch (err) {}
+    await refresh(true);
+  });
+
+  function render(s) {
+    settings = s;
+    const idx = nearestIdx(s.intervalSeconds);
+    $('intervalIdx').value = idx;
+    $('interval-val').textContent = fmtDuration(INTERVALS[idx]);
+    for (const k of ['transition', 'order', 'fit', 'recency', 'sleepTime', 'wakeTime']) $(k).value = s[k];
+    $('recency-row').hidden = s.order !== 'shuffle';
+    $('idleMinutes').value = String(s.idleMinutes);
+    if (!$('idleMinutes').value) {
+      $('idleMinutes').add(new Option(`${s.idleMinutes} minutes`, s.idleMinutes));
+      $('idleMinutes').value = String(s.idleMinutes);
+    }
+    $('transitionMs').value = s.transitionMs;
+    $('transitionMs-val').textContent = (s.transitionMs / 1000).toFixed(1) + ' s';
+    for (const k of ['showClock', 'scheduleEnabled', 'slideshowOnWake', 'slideshowOnBoot']) $(k).checked = !!s[k];
+    const auto = s.brightness < 0;
+    $('autoBrightness').checked = auto;
+    $('brightness-row').hidden = auto;
+    if (!auto) { $('brightness').value = s.brightness; $('brightness-val').textContent = s.brightness + '%'; }
+    $('transitionMs').disabled = s.transition === 'none';
+    if (s.albumId && [...$('albumId').options].some(o => o.value === s.albumId)) $('albumId').value = s.albumId;
+  }
+
+  function renderStatus(st) {
+    $('version').textContent = st.version + (st.deviceOwner ? '' : ' · remote updates unavailable');
+    $('state-line').textContent = !st.screenOn ? 'Asleep' : st.showing[0].toUpperCase() + st.showing.slice(1);
+    const n = albumCounts[settings.albumId] ?? st.photoCount;
+    $('photo-count').textContent = `${n} photos`;
+    const rows = [
+      ['Screen', st.screenOn ? 'On' : 'Off'],
+      ['Showing', st.showing],
+      ['Next sleep', st.nextSleep || 'Schedule off'],
+      ['Next wake', st.nextWake || 'Schedule off'],
+      ['Frame address', st.address],
+      ['Wireless ADB', st.adbWifi ? 'On (port 5555)' : 'Off – needs USB + "adb tcpip 5555"'],
+    ];
+    if (!st.hasAdmin) rows.push(['Problem', 'Screen-off permission missing']);
+    if (!st.canSetBrightness) rows.push(['Problem', 'Brightness permission missing']);
+    if (st.lastError) rows.push(['Last error', st.lastError]);
+    $('status').innerHTML = '';
+    for (const [k, v] of rows) {
+      const dt = document.createElement('dt'); dt.textContent = k;
+      const dd = document.createElement('dd'); dd.textContent = v;
+      if (k === 'Problem' || k === 'Last error') dd.className = 'err';
+      $('status').append(dt, dd);
+    }
+  }
+
+  function refreshPhoto() {
+    const img = $('current');
+    img.onload = () => { $('no-photo').hidden = true; img.hidden = false; };
+    img.onerror = () => { $('no-photo').hidden = false; img.hidden = true; };
+    img.src = `/api/current.jpg?pin=${encodeURIComponent(pin)}&t=${Date.now()}`;
+  }
+
+  async function loadAlbums() {
+    try {
+      const res = await fetch('/api/albums', { headers: { 'X-Pin': pin } });
+      const albums = await res.json();
+      const sel = $('albumId');
+      sel.innerHTML = '';
+      albums.sort((a, b) => a.name.localeCompare(b.name));
+      for (const a of albums) {
+        albumCounts[a.id] = a.count;
+        sel.add(new Option(`${a.name} (${a.count})`, a.id));
+      }
+      if (albumCounts[settings.albumId] !== undefined) $('photo-count').textContent = `${albumCounts[settings.albumId]} photos`;
+      if (settings.albumId) sel.value = settings.albumId;
+    } catch (e) {
+      $('albumId').innerHTML = '<option>Could not load albums</option>';
+    }
+  }
+
+  async function refresh(first) {
+    try {
+      const data = await api('/api/state');
+      $('pin-screen').hidden = true;
+      $('app').hidden = false;
+      if (!busy) render(data.settings);
+      renderStatus(data.status);
+      refreshPhoto();
+      if (first) loadAlbums();
+    } catch (e) {
+      if (e.message !== 'auth') $('state-line').textContent = 'Frame not reachable';
+    }
+  }
+
+  async function save(patch) {
+    busy = true;
+    try {
+      const data = await api('/api/settings', { method: 'POST', body: JSON.stringify(patch) });
+      render(data.settings);
+      toast('Saved');
+    } catch (e) {
+      if (e.message !== 'auth') toast(e.message, true);
+    } finally {
+      busy = false;
+    }
+  }
+
+  // Wire up controls
+  $('intervalIdx').addEventListener('input', (e) => { $('interval-val').textContent = fmtDuration(INTERVALS[e.target.value]); });
+  $('intervalIdx').addEventListener('change', (e) => save({ intervalSeconds: INTERVALS[e.target.value] }));
+  $('transitionMs').addEventListener('input', (e) => { $('transitionMs-val').textContent = (e.target.value / 1000).toFixed(1) + ' s'; });
+  $('transitionMs').addEventListener('change', (e) => save({ transitionMs: +e.target.value }));
+  for (const k of ['transition', 'order', 'fit', 'recency', 'albumId', 'sleepTime', 'wakeTime']) {
+    $(k).addEventListener('change', (e) => save({ [k]: e.target.value }));
+  }
+  $('idleMinutes').addEventListener('change', (e) => save({ idleMinutes: +e.target.value }));
+  for (const k of ['showClock', 'scheduleEnabled', 'slideshowOnWake', 'slideshowOnBoot']) {
+    $(k).addEventListener('change', (e) => save({ [k]: e.target.checked }));
+  }
+  $('autoBrightness').addEventListener('change', (e) => save({ brightness: e.target.checked ? -1 : 60 }));
+  $('brightness').addEventListener('input', (e) => { $('brightness-val').textContent = e.target.value + '%'; });
+  $('brightness').addEventListener('change', (e) => save({ brightness: +e.target.value }));
+
+  const labels = { start: 'Starting slideshow', next: 'Next photo', prev: 'Previous photo', home: 'Going home',
+                   sleep: 'Screen off', wake: 'Waking up', reload: 'Reloading album' };
+  document.querySelectorAll('[data-action]').forEach((b) => b.addEventListener('click', async () => {
+    const what = b.dataset.action;
+    b.disabled = true;
+    try {
+      await api(`/api/action?do=${what}`, { method: 'POST' });
+      toast(labels[what] || 'Done');
+      setTimeout(refresh, what === 'next' || what === 'prev' ? 2500 : 1500);
+    } catch (e) {
+      if (e.message !== 'auth') toast(e.message, true);
+    } finally {
+      b.disabled = false;
+    }
+  }));
+
+  $('apk').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!confirm(`Install ${file.name} on the frame?`)) return;
+    toast('Uploading…');
+    try {
+      const res = await fetch('/api/update', { method: 'POST', body: file,
+        headers: { 'X-Pin': pin, 'Content-Type': 'application/vnd.android.package-archive' } });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.ok === false) throw new Error(data.error || `Error ${res.status}`);
+      toast('Installing – back in a few seconds');
+      setTimeout(() => refresh(), 15000);
+    } catch (err) { toast(err.message, true); }
+  });
+  $('restart').addEventListener('click', async () => {
+    if (!confirm('Restart the frame now?')) return;
+    try {
+      await api('/api/action?do=restart', { method: 'POST' });
+      toast('Restarting – back in about a minute');
+    } catch (err) { if (err.message !== 'auth') toast(err.message, true); }
+  });
+
+  if (!pin) showPin(); else refresh(true);
+  setInterval(() => { if (!document.hidden && !$('app').hidden) refresh(); }, 10000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('app').hidden) refresh(); });
+})();
+</script>
+</body>
+</html>

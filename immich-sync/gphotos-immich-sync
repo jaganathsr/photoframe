@@ -1,0 +1,323 @@
+#!/usr/bin/env python3
+"""Mirror a shared Google Photos album into an Immich album.
+
+Google no longer lets third-party apps read shared albums through its API, so this reads the
+album's public share link (the same page a browser shows) and its paging endpoint. That is not an
+official API: if Google changes the page, the script stops finding photos, alerts via ntfy, and
+never removes anything from Immich in that case.
+
+For each photo in the Google album (videos are skipped):
+  1. Already mapped from an earlier run -> nothing to do.
+  2. Download the original. If Immich already has identical bytes -> reuse that asset.
+  3. Else if Immich has the same file name taken within ~a day (e.g. your phone's backup of a
+     Pixel photo, where Google's copy differs slightly) -> reuse that asset.
+  4. Else upload it (e.g. a photo a family member added).
+Then make sure every mapped asset is in the Immich album. Photos removed from the Google album are
+removed from the Immich album (the asset itself stays in Immich), unless the Google listing looks
+broken.
+
+Config: ~/.config/gphotos-immich-sync.env (KEY=value lines):
+  GPHOTOS_SHARE_LINK, IMMICH_URL, IMMICH_API_KEY, IMMICH_ALBUM_ID
+State:  ~/.local/state/gphotos-immich-sync.json     Log: ~/.local/state/gphotos-immich-sync.log
+
+Usage: gphotos-immich-sync [--dry-run] [--verbose]
+"""
+import hashlib
+import json
+import os
+import re
+import sys
+import time
+import urllib.parse
+import urllib.request
+import uuid
+from datetime import datetime, timezone
+
+HOME = os.path.expanduser("~")
+CONFIG = os.path.join(HOME, ".config/gphotos-immich-sync.env")
+STATE = os.path.join(HOME, ".local/state/gphotos-immich-sync.json")
+LOG = os.path.join(HOME, ".local/state/gphotos-immich-sync.log")
+UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+      "Chrome/130.0 Safari/537.36")
+DEVICE_ID = "gphotos-immich-sync"
+ALERT_EVERY = 6 * 3600          # repeat a failure alert at most every 6 hours
+NAME_MATCH_WINDOW_MS = 26 * 3600 * 1000
+
+DRY = "--dry-run" in sys.argv
+VERBOSE = "--verbose" in sys.argv or DRY
+
+
+def log(msg):
+    line = f"{datetime.now().astimezone().isoformat(timespec='seconds')} {msg}"
+    if VERBOSE or sys.stdout.isatty():
+        print(line)
+    os.makedirs(os.path.dirname(LOG), exist_ok=True)
+    with open(LOG, "a") as f:
+        f.write(line + "\n")
+
+
+def load_config():
+    cfg = {}
+    with open(CONFIG) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                cfg[k.strip()] = v.strip().strip('"').strip("'")
+    for k in ("GPHOTOS_SHARE_LINK", "IMMICH_URL", "IMMICH_API_KEY", "IMMICH_ALBUM_ID"):
+        if not cfg.get(k):
+            raise SystemExit(f"missing {k} in {CONFIG}")
+    cfg["IMMICH_URL"] = cfg["IMMICH_URL"].rstrip("/")
+    return cfg
+
+
+def load_state():
+    try:
+        with open(STATE) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {"map": {}, "last_count": 0, "last_alert": 0, "failing_since": 0}
+
+
+def save_state(st):
+    if DRY:
+        return
+    tmp = STATE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(st, f, indent=1, sort_keys=True)
+    os.replace(tmp, STATE)
+
+
+# ---------------------------------------------------------------- Google Photos (share link)
+
+def http_get(url, timeout=60):
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    return urllib.request.urlopen(req, timeout=timeout)
+
+
+def google_album(share_link):
+    """Returns (title, [items]); each item: dict(key, url, taken_ms, is_video)."""
+    resp = http_get(share_link)
+    html = resp.read().decode("utf-8")
+    m = re.search(r'https://photos\.google\.com/share/([^?"/]+)\?key=([A-Za-z0-9_-]+)',
+                  resp.geturl() + " " + html)
+    if not m:
+        raise RuntimeError("share page has no album id (link revoked or page format changed)")
+    album_id, auth_key = m.group(1), m.group(2)
+    title = re.search(r"<title>(.*?) - Google Photos", html)
+    blocks = dict(re.findall(
+        r"AF_initDataCallback\(\{key: '(ds:\d+)'.*?data:(.*?), sideChannel: \{\}\}\);", html, re.S))
+    data = None
+    for raw in blocks.values():
+        if "googleusercontent.com/pw/" in raw:
+            j = json.loads(raw)
+            if len(j) > 2 and isinstance(j[1], list) and j[1] and isinstance(j[1][0], list):
+                data = j
+                break
+    if data is None:
+        raise RuntimeError("could not find the photo list in the share page (format changed?)")
+    raw_items, token = list(data[1]), data[2]
+    pages = 0
+    while token:
+        pages += 1
+        if pages > 200:
+            raise RuntimeError("too many pages; aborting")
+        freq = json.dumps([[["snAcKc", json.dumps([album_id, token, None, auth_key]), None,
+                             "generic"]]])
+        req = urllib.request.Request(
+            "https://photos.google.com/_/PhotosUi/data/batchexecute",
+            data=urllib.parse.urlencode({"f.req": freq}).encode(),
+            headers={"User-Agent": UA,
+                     "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"})
+        body = urllib.request.urlopen(req, timeout=60).read().decode("utf-8")
+        inner = None
+        for line in body.split("\n"):
+            if line.startswith('[["wrb.fr"'):
+                inner = json.loads(json.loads(line)[0][2])
+                break
+        if not inner:
+            raise RuntimeError("paging request returned no data (format changed?)")
+        raw_items += inner[1]
+        token = inner[2] if len(inner) > 2 else None
+
+    items = []
+    for it in raw_items:
+        try:
+            extra = it[-1] if isinstance(it[-1], dict) else {}
+            items.append({"key": it[0], "url": it[1][0], "taken_ms": int(it[2] or 0),
+                          "is_video": "76647426" in extra})
+        except (IndexError, TypeError, ValueError):
+            continue
+    return (title.group(1) if title else "?"), items
+
+
+# ---------------------------------------------------------------- Immich
+
+class Immich:
+    def __init__(self, url, key):
+        self.url, self.key = url, key
+
+    def call(self, method, path, body=None, timeout=60):
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(self.url + path, data=data, method=method,
+                                     headers={"x-api-key": self.key,
+                                              "Content-Type": "application/json",
+                                              "Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            raw = r.read()
+            return json.loads(raw) if raw else None
+
+    def album_asset_ids(self, album_id):
+        # Immich v3 no longer embeds assets in the album response; page through search instead.
+        name = self.call("GET", f"/api/albums/{album_id}")["albumName"]
+        ids, page = set(), 1
+        while page:
+            res = self.call("POST", "/api/search/metadata",
+                            {"albumIds": [album_id], "size": 1000, "page": page})["assets"]
+            ids.update(a["id"] for a in res.get("items", []))
+            nxt = res.get("nextPage")
+            page = int(nxt) if nxt else None
+        return name, ids
+
+    def checksum_match(self, checksum):
+        res = self.call("POST", "/api/assets/bulk-upload-check",
+                        {"assets": [{"id": "x", "checksum": checksum}]})["results"][0]
+        if res.get("action") == "reject" and res.get("assetId") and not res.get("isTrashed"):
+            return res["assetId"]
+        return None
+
+    def name_match(self, filename, taken_ms):
+        res = self.call("POST", "/api/search/metadata",
+                        {"originalFileName": filename, "size": 50})
+        for a in res.get("assets", {}).get("items", []):
+            if a.get("originalFileName", "").lower() != filename.lower() or a.get("isTrashed"):
+                continue
+            when = a.get("exifInfo", {}).get("dateTimeOriginal") or a.get("fileCreatedAt")
+            if not when or not taken_ms:
+                return a["id"]
+            t = datetime.fromisoformat(when.replace("Z", "+00:00")).timestamp() * 1000
+            if abs(t - taken_ms) <= NAME_MATCH_WINDOW_MS:
+                return a["id"]
+        return None
+
+    def upload(self, data, filename, taken_ms, device_asset_id):
+        when = datetime.fromtimestamp((taken_ms or time.time() * 1000) / 1000,
+                                      tz=timezone.utc).isoformat()
+        boundary = uuid.uuid4().hex
+        parts = []
+        for name, value in (("deviceAssetId", device_asset_id), ("deviceId", DEVICE_ID),
+                            ("fileCreatedAt", when), ("fileModifiedAt", when),
+                            ("filename", filename)):
+            parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"'
+                         f"\r\n\r\n{value}\r\n".encode())
+        safe = filename.replace('"', "_")
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="assetData"; '
+                     f'filename="{safe}"\r\nContent-Type: application/octet-stream\r\n\r\n'
+                     .encode() + data + b"\r\n")
+        parts.append(f"--{boundary}--\r\n".encode())
+        req = urllib.request.Request(self.url + "/api/assets", data=b"".join(parts),
+                                     method="POST",
+                                     headers={"x-api-key": self.key, "Accept": "application/json",
+                                              "Content-Type": f"multipart/form-data; boundary={boundary}"})
+        with urllib.request.urlopen(req, timeout=300) as r:
+            return json.loads(r.read())["id"]
+
+
+# ---------------------------------------------------------------- main
+
+def filename_from(resp, key):
+    cd = resp.headers.get("Content-Disposition", "")
+    m = re.search(r'filename\*?="?(?:UTF-8\'\')?([^";]+)"?', cd)
+    return urllib.parse.unquote(m.group(1)) if m else f"{key}.jpg"
+
+
+def sync(cfg, st):
+    title, items = google_album(cfg["GPHOTOS_SHARE_LINK"])
+    photos = [i for i in items if not i["is_video"]]
+    log(f"google album '{title}': {len(items)} items ({len(items) - len(photos)} videos skipped)")
+    if not photos:
+        raise RuntimeError("Google album listing came back empty (format changed or link revoked)")
+
+    im = Immich(cfg["IMMICH_URL"], cfg["IMMICH_API_KEY"])
+    album_name, in_album = im.album_asset_ids(cfg["IMMICH_ALBUM_ID"])
+    mapping = st.setdefault("map", {})
+    stats = {"reused_bytes": 0, "reused_name": 0, "uploaded": 0, "added": 0, "removed": 0}
+
+    for it in photos:
+        if it["key"] in mapping:
+            continue
+        resp = http_get(it["url"] + "=d", timeout=300)
+        data = resp.read()
+        if not (resp.headers.get("Content-Type") or "").startswith("image/"):
+            log(f"skip {it['key']}: not an image ({resp.headers.get('Content-Type')})")
+            continue
+        fname = filename_from(resp, it["key"])
+        asset = im.checksum_match(hashlib.sha1(data).hexdigest())
+        how = "reused_bytes"
+        if not asset:
+            asset = im.name_match(fname, it["taken_ms"])
+            how = "reused_name"
+        if not asset:
+            how = "uploaded"
+            asset = None if DRY else im.upload(data, fname, it["taken_ms"], it["key"])
+        stats[how] += 1
+        log(f"{how}: {fname}")
+        if asset:
+            mapping[it["key"]] = asset
+            save_state(st)
+
+    # Make the album match: add missing mapped assets...
+    want = {mapping[i["key"]] for i in photos if i["key"] in mapping}
+    to_add = sorted(want - in_album)
+    for start in range(0, len(to_add), 200):
+        chunk = to_add[start:start + 200]
+        if not DRY:
+            im.call("PUT", f"/api/albums/{cfg['IMMICH_ALBUM_ID']}/assets", {"ids": chunk})
+        stats["added"] += len(chunk)
+
+    # ...and remove photos that were taken out of the Google album (only ones this script mapped).
+    current = {i["key"] for i in photos}
+    gone = [k for k in list(mapping) if k not in current]
+    last = st.get("last_count", 0)
+    if gone and last and len(photos) < 0.8 * last:
+        log(f"NOT removing {len(gone)} photos: Google listing shrank from {last} to {len(photos)}")
+    elif gone:
+        ids = [mapping[k] for k in gone if mapping[k] in in_album]
+        if ids and not DRY:
+            im.call("DELETE", f"/api/albums/{cfg['IMMICH_ALBUM_ID']}/assets", {"ids": ids})
+        stats["removed"] = len(ids)
+        if not DRY:
+            for k in gone:
+                del mapping[k]
+
+    st["last_count"] = len(photos)
+    st["last_ok"] = int(time.time())
+    log(f"immich album '{album_name}': " + ", ".join(f"{k}={v}" for k, v in stats.items()))
+
+
+def main():
+    cfg = load_config()
+    st = load_state()
+    try:
+        sync(cfg, st)
+        if st.get("failing_since"):
+            log("recovered")
+            os.system('/usr/local/bin/notify "Photo frame sync recovered" '
+                      '"Google album -> Immich sync is working again" low')
+        st["failing_since"] = 0
+        save_state(st)
+    except Exception as e:  # noqa: BLE001 - report anything and keep the cron quiet
+        log(f"FAILED: {type(e).__name__}: {e}")
+        now = int(time.time())
+        st["failing_since"] = st.get("failing_since") or now
+        if not DRY and now - st.get("last_alert", 0) > ALERT_EVERY:
+            st["last_alert"] = now
+            msg = f"{type(e).__name__}: {e}"[:300].replace('"', "'")
+            os.system(f'/usr/local/bin/notify "Photo frame sync failing" '
+                      f'"{msg} (log: ~/.local/state/gphotos-immich-sync.log)" high')
+        save_state(st)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

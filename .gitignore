@@ -1,0 +1,13 @@
+# Secrets and personal config - never commit
+.env
+frame.env
+*.jks
+*.keystore
+immich.json
+
+# Build outputs
+build/
+*.apk
+*.idsig
+__pycache__/
+*.pyc
