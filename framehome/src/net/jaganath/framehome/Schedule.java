@@ -102,6 +102,25 @@ final class Schedule {
         return true;
     }
 
+    /**
+     * Scheduled sleep: shows the good-night message for 30 seconds, then turns the screen off.
+     * If the screen is already off (or the message can't be shown), sleeps straight away.
+     */
+    static void goodnight(Context c) {
+        PowerManager pm = c.getSystemService(PowerManager.class);
+        if (pm == null || !pm.isInteractive() || !hasAdmin(c)) {
+            sleepNow(c);
+            return;
+        }
+        FrameDream.stopDreaming();
+        try {
+            c.startActivity(new Intent(c, GoodnightActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION));
+        } catch (RuntimeException e) {
+            sleepNow(c);
+        }
+    }
+
     /** Turns the screen on and brings Fotoo (or the home screen) to the front. */
     @SuppressWarnings("deprecation")
     static void wakeNow(Context c) {

@@ -12,7 +12,7 @@ public class ScheduleReceiver extends BroadcastReceiver {
         if (action == null) return;
         switch (action) {
             case Schedule.ACTION_SLEEP:
-                Schedule.sleepNow(c);
+                Schedule.goodnight(c);
                 break;
             case Schedule.ACTION_WAKE:
                 Schedule.wakeNow(c);
