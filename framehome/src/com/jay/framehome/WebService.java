@@ -512,6 +512,12 @@ public class WebService extends Service {
             case "wake":
                 r = () -> Schedule.wakeNow(c);
                 break;
+            case "releaseOwner":
+                // Gives up device-owner status so the app can be uninstalled or replaced.
+                if (!isDeviceOwner()) return "Frame Home isn't device owner";
+                r = () -> getSystemService(android.app.admin.DevicePolicyManager.class)
+                        .clearDeviceOwnerApp(getPackageName());
+                break;
             case "restart":
                 if (!isDeviceOwner()) return "Restart needs Frame Home to be device owner";
                 r = () -> getSystemService(android.app.admin.DevicePolicyManager.class)
