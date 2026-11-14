@@ -15,3 +15,6 @@ __pycache__/
 # Downloaded build dependencies
 framehome/libs/
 framehome/dist/
+
+# Private session notes
+SESSION-LOG.md
