@@ -56,6 +56,30 @@ The ADB extras (silent updates as device owner, wireless ADB, removing vendor ap
 
 `immich-sync/` has an optional NAS script that mirrors a shared Google Photos album into Immich.
 
+## Disclaimer (please read; it's short and only slightly sarcastic)
+
+Frame Home exists so your frame can have a second life long after Lenovo stopped supporting it. It's a free hobby project, made with care and **zero warranty**.
+
+**You install it entirely at your own risk.** If, after installing Frame Home, your frame:
+
+- reboots in an endless loop like it's stuck in a time-travel movie,
+- becomes a very flat, very expensive paperweight,
+- only ever shows that one photo of your uncle at the 2009 barbecue,
+- or starts having opinions,
+
+…that's on you, not us. The authors aren't responsible for bricked frames, lost photos, voided warranties (spoiler: yours expired long ago), family arguments about which photos made the cut, or any other damage or inconvenience, direct or indirect. There's no promise that it works on your frame, keeps working, or does what this README says. The [MIT License](LICENSE) puts it more formally: the software is provided "as is", without warranty of any kind.
+
+Frame Home only *reads* your photos, but keep backups anyway. Backups are always a good idea.
+
+## Need help?
+
+We're happy to help when we can, with no promises on response time (we have frames to stare at). Open an issue on GitHub, or email:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/contact-dark.png">
+  <img src="docs/images/contact-light.png" alt="Contact email address, shown as an image to keep spam bots away" width="239" height="32">
+</picture>
+
 ## License
 
-TBD
+[MIT](LICENSE) © 2026 Jaganath Achari

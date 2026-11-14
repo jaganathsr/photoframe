@@ -2,6 +2,8 @@
 
 The Lenovo Smart Frame runs Android 10, but it has no touchscreen and hides most of the normal Android settings. You don't need a computer to install Frame Home: you download the app on the frame and turn on a few permissions, all with a keyboard. It takes about 20 minutes.
 
+> Frame Home is a free hobby project and comes with no warranty: you install it at your own risk. See the [disclaimer](../README.md#disclaimer-please-read-its-short-and-only-slightly-sarcastic).
+
 ## What you need
 
 - A **mouse and keyboard** you can plug into the frame's USB port. The easiest is a wireless keyboard + mouse set that shares one USB receiver, because the frame has only one USB port. (A USB hub with a wired mouse and keyboard also works.)
