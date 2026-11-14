@@ -27,6 +27,11 @@ supported.
 - An Android 10+ frame or tablet with **USB debugging** enabled (Developer options).
 - A Linux/macOS computer with the Android SDK (build-tools 35, platform 35), a JDK 11+, and `curl`.
 
+## Setup guides
+
+- **[Lenovo Smart Frame (CD-3L501F)](docs/lenovo-smart-frame.md)**: step-by-step, including getting
+  into the hidden settings with a keyboard, USB debugging, and removing Lenovo's leftover apps.
+
 ## Quick start
 
 ```bash
