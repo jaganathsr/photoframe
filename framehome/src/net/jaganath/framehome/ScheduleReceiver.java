@@ -1,4 +1,4 @@
-package com.jay.framehome;
+package net.jaganath.framehome;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;

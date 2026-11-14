@@ -1,4 +1,4 @@
-package com.jay.framehome;
+package net.jaganath.framehome;
 
 import android.app.AlarmManager;
 import android.app.PendingIntent;
@@ -15,8 +15,8 @@ import java.util.Calendar;
 
 /** All sleep/wake schedule logic and settings. */
 final class Schedule {
-    static final String ACTION_SLEEP = "com.jay.framehome.SLEEP";
-    static final String ACTION_WAKE = "com.jay.framehome.WAKE";
+    static final String ACTION_SLEEP = "net.jaganath.framehome.SLEEP";
+    static final String ACTION_WAKE = "net.jaganath.framehome.WAKE";
 
     private static final int REQ_SLEEP = 1;
     private static final int REQ_WAKE = 2;

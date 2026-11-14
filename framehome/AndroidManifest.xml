@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.jay.framehome"
-    android:versionCode="12"
-    android:versionName="3.0-dev">
+    package="net.jaganath.framehome"
+    android:versionCode="10000"
+    android:versionName="1.0.0">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Photos from a folder on the frame (internal storage or a USB stick). -->
@@ -70,7 +70,7 @@
             android:noHistory="true"
             android:showWhenLocked="true"
             android:turnScreenOn="true"
-            android:taskAffinity="com.jay.framehome.wake" />
+            android:taskAffinity="net.jaganath.framehome.wake" />
 
         <receiver android:name=".ScheduleReceiver" android:exported="true">
             <intent-filter>

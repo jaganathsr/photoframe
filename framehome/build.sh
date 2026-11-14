@@ -16,7 +16,7 @@ PLATFORM="$SDK/platforms/android-35/android.jar"
 ADB="$SDK/platform-tools/adb"
 # javac: use JAVA_HOME if it has one, else a system javac.
 JAVAC="${JAVA_HOME:+$JAVA_HOME/bin/}javac"
-PKG=com.jay.framehome
+PKG=net.jaganath.framehome
 
 # Third-party libraries (SMB support), downloaded from Maven Central and checked against pinned
 # SHA-256 hashes. smbj 0.15.0 and the exact dependency versions it declares.

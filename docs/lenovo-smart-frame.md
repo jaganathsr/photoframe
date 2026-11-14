@@ -2,7 +2,7 @@
 
 The Lenovo Smart Frame runs Android 10, but it has no touchscreen and hides most of the normal Android settings. You don't need a computer to install Frame Home: you download the app on the frame and turn on a few permissions, all with a keyboard. It takes about 20 minutes.
 
-> Frame Home is a free hobby project and comes with no warranty: you install it at your own risk. See the [disclaimer](../README.md#disclaimer-please-read-its-short-and-only-slightly-sarcastic).
+> Frame Home is a free hobby project and comes with no warranty: you install it at your own risk. See the [disclaimer](../README.md#disclaimer).
 
 ## What you need
 
@@ -104,11 +104,15 @@ cp frame.env.example frame.env   # set FRAME_IP
 Only possible over ADB, and only when no accounts are signed in on the frame (`adb shell dumpsys account` says `Accounts: 0`):
 
 ```bash
-adb shell dpm set-device-owner com.jay.framehome/.AdminReceiver
+adb shell dpm set-device-owner net.jaganath.framehome/.AdminReceiver
 ./build.sh remote                # later updates over Wi-Fi, installed without a prompt
 ```
 
-To uninstall Frame Home later, the device-owner status has to be removed first.
+To uninstall Frame Home later, remove the device-owner status first (use your PIN and frame IP), then uninstall it normally:
+
+```bash
+curl -X POST -H "X-Pin: 1234" "http://192.168.1.50:8080/api/action?do=releaseOwner"
+```
 
 ### Wireless ADB
 
