@@ -6,48 +6,44 @@ A replacement home screen and photo slideshow for old Android photo frames, buil
 
 ## Features
 
-- Photo sources, chosen from the phone remote with a **Test & save** check:
-- [Immich](https://immich.app) album (uses Immich's screen-sized previews)
-- a folder on the frame (internal storage or a USB stick, with a folder browser)
-- a network share over **SMB** (Windows PCs, Synology/QNAP/TrueNAS, Samba), guest or login
-- photos from folders and shares are downscaled, rotated upright (EXIF) and cached on the frame
-- Full-screen slideshow: crossfade / slide / zoom / Ken Burns transitions, shuffle with an optional bias towards recent photos, adjustable photo duration, clock overlay, offline cache.
-- Sleep and wake schedule (screen off at night, back on in the morning).
-- Phone remote: a web page served by the frame (`http://FRAME_IP:8080`, PIN-protected) to change every setting, start/stop the slideshow, skip photos, adjust brightness and see what's showing.
-- Remote updates and restart from the phone (when installed as device owner).
+- Photo sources, chosen from your phone with a **Test & save** check:
+  - an [Immich](https://immich.app) album
+  - a network share over **SMB** (Windows PCs, Synology, QNAP, TrueNAS, Samba)
+  - a folder on the frame or a USB stick
+- Full-screen slideshow: crossfade, slide, zoom or Ken Burns transitions, shuffle with an optional bias towards recent photos, adjustable photo duration, clock overlay. Photos are cached on the frame, so it keeps playing if the source is offline.
+- Sleep and wake schedule: screen off at night, back on in the morning.
+- **Phone remote**: a page served by the frame (`http://FRAME_IP:8080`, PIN-protected) to change every setting, start or skip photos, adjust brightness, see what's showing, and send updates.
+- On-frame **Setup checklist**: install from the browser, no computer needed.
 - Keeps itself as the home screen even on frames whose vendor launcher can't be disabled.
-- Optional NAS script that mirrors a shared Google Photos album into Immich (`immich-sync/`).
 
-## Requirements
+## Install
 
-- An Android 10+ frame or tablet with **USB debugging** enabled (Developer options).
-- A Linux/macOS computer with the Android SDK (build-tools 35, platform 35), a JDK 11+, and `curl`.
+**No computer needed.** Download the latest `FrameHome-<version>.apk` from the Releases page in the frame's browser, open it, and follow the Setup checklist that appears.
 
-## Setup guides
+- **[Step-by-step guide for the Lenovo Smart Frame](docs/lenovo-smart-frame.md)**
 
-- **[Lenovo Smart Frame (CD-3L501F)](docs/lenovo-smart-frame.md)**: step-by-step, including getting into the hidden settings with a keyboard, USB debugging, and removing Lenovo's leftover apps.
+Other Android 10+ frames and tablets should work the same way: you need a keyboard (or touchscreen) to get through Android's permission screens once.
 
-## Quick start
+## For developers
+
+Build from source with the Android SDK (build-tools 35, platform 35), a JDK 11+ and `curl`. No Gradle needed.
 
 ```bash
 cd framehome
-cp frame.env.example frame.env      # fill in your frame IP (Immich details optional)
-./build.sh install                  # over USB (or Wi-Fi ADB)
+cp frame.env.example frame.env   # your frame's IP, optional Immich defaults
+./build.sh                       # build framehome.apk
+./build.sh install               # install over ADB and grant all permissions
+./build.sh remote                # update over Wi-Fi via the phone-remote API
+./build.sh release               # versioned APK in dist/ for a GitHub release
 ```
-
-Optional, for silent remote updates (only works on a frame with **no accounts** signed in):
-
-```bash
-adb shell dpm set-device-owner com.jay.framehome/.AdminReceiver
-./build.sh remote                   # later updates over Wi-Fi, no cable
-```
-
-Then open `http://FRAME_IP:8080` on your phone, enter the PIN shown on the frame, and pick a photo source under **Photo source**.
 
 The first build downloads the SMB library ([smbj](https://github.com/hierynomus/smbj)) and its dependencies from Maven Central into `framehome/libs/`, checked against pinned SHA-256 hashes.
 
-> On recent Android phones, Chrome/Brave need the **Nearby devices** permission to open pages on
-> your home network.
+APKs are signed with `framehome/keystore.jks`, which is created on first build. Keep it private and backed up: frames only accept updates signed with the same key, so releases must always be signed with the same keystore.
+
+The ADB extras (silent updates as device owner, wireless ADB, removing vendor apps) are in the [guide's developer section](docs/lenovo-smart-frame.md#for-developers-optional-adb).
+
+`immich-sync/` has an optional NAS script that mirrors a shared Google Photos album into Immich.
 
 ## License
 
