@@ -13,10 +13,8 @@ Frame Home was built and tested on the **Lenovo Smart Frame**, model **CD-3L501F
 - the model number is on the label on the back; in Android settings the model shows as **Lenovo CD-3L501F**
 
 <p>
-  <a href="https://www.lenovo.com/us/en/smart-frame/index.html"><img src="https://p1-ofp.static.pub/ShareResource/smart-frame/img/lenovo-smart-frame-whats-in-the-box-front.e8302792ca13a486.png" alt="Lenovo Smart Frame, front" height="240"></a>
-  &nbsp;&nbsp;
-  <a href="https://www.lenovo.com/us/en/smart-frame/index.html"><img src="https://p2-ofp.static.pub/ShareResource/smart-frame/img/lenovo-smart-frame-whats-in-the-box-rear-with-wall-mount.c369b848e73def00.png" alt="Lenovo Smart Frame, back with wall mount" height="240"></a>
-  <br><sub>Front and back of the Lenovo Smart Frame. Images © Lenovo, shown from <a href="https://www.lenovo.com/us/en/smart-frame/index.html">lenovo.com</a>.</sub>
+  <a href="https://www.lenovo.com/us/en/smart-frame/index.html"><img src="https://p2-ofp.static.pub/ShareResource/smart-frame/img/lenovo-smart-frame-feature-01-designed-for-your-home.f591d24f77c69a3b.jpg" alt="Lenovo Smart Frame hanging on a wall" width="600"></a>
+  <br><sub>The Lenovo Smart Frame. Image © Lenovo, shown from <a href="https://www.lenovo.com/us/en/smart-frame/index.html">lenovo.com</a>.</sub>
 </p>
 
 ## Why this exists
