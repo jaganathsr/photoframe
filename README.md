@@ -85,3 +85,5 @@ We're happy to help when we can, with no promises on response time (we have fram
 ## License
 
 [MIT](LICENSE) © 2026 Jaganath Achari
+
+Includes the [Bebas Neue](https://fonts.google.com/specimen/Bebas+Neue) font by Dharma Type, licensed under the [SIL Open Font License 1.1](docs/licenses/BebasNeue-OFL.txt).

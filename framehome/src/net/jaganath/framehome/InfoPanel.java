@@ -1,7 +1,6 @@
 package net.jaganath.framehome;
 
 import android.content.Context;
-import android.graphics.Typeface;
 import android.widget.TextView;
 
 import java.text.DateFormat;
@@ -14,9 +13,11 @@ final class InfoPanel extends TextView {
 
     InfoPanel(Context c) {
         super(c);
-        setTextSize(15);
-        setTextColor(0xE6FFFFFF);
-        setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        // Bebas Neue (SIL Open Font License, see docs/licenses): tall and condensed, all caps.
+        setTextSize(20);
+        setLetterSpacing(0.06f);
+        setTextColor(0xEBFFFFFF);
+        setTypeface(c.getResources().getFont(R.font.bebas_neue_regular));
         setShadowLayer(6f, 0f, 1.5f, 0xCC000000);
         setSingleLine(true);
     }
