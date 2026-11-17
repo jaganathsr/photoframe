@@ -365,6 +365,7 @@ public class WebService extends Service {
                 .put("screenOn", screenOn)
                 .put("showing", showing)
                 .put("photoCount", src.count())
+                .put("nowShowing", SlideshowView.currentInfo() == null ? JSONObject.NULL : SlideshowView.currentInfo())
                 .put("lastError", src.lastError() == null ? JSONObject.NULL : src.lastError())
                 .put("hasAdmin", Schedule.hasAdmin(this))
                 .put("canSetBrightness", android.provider.Settings.System.canWrite(this))

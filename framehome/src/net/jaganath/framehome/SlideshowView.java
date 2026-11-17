@@ -37,6 +37,9 @@ final class SlideshowView extends FrameLayout {
 
     static boolean anyActive() { return !ACTIVE.isEmpty(); }
     static File currentFile() { return currentFile; }
+    private static volatile String currentInfo;
+    /** Plain-text details of the photo on screen, for the phone remote. */
+    static String currentInfo() { return currentInfo; }
 
     /** "next", "prev", "reload" or "settings"; safe to call from any thread. */
     static void broadcast(String command) {
@@ -50,6 +53,9 @@ final class SlideshowView extends FrameLayout {
     private final Bitmap[] bitmaps = new Bitmap[2];
     private final TextView message;
     private final TextClock clock;
+    private final InfoPanel info;
+    private PhotoSource.Meta lastMeta;
+    private String lastPlace;
     private final Deque<File> history = new ArrayDeque<>();
     private final Random random = new Random();
     private ValueAnimator kenBurns;
@@ -83,6 +89,10 @@ final class SlideshowView extends FrameLayout {
         int m = Ui.dp(c, 28);
         lp.setMargins(m, m, m, m);
         addView(clock, lp);
+
+        info = new InfoPanel(c);
+        info.setVisibility(GONE);
+        addView(info, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
         applySettings();
     }
 
@@ -169,7 +179,14 @@ final class SlideshowView extends FrameLayout {
     }
 
     private void applySettings() {
-        clock.setVisibility(Prefs.showClock(getContext()) ? VISIBLE : GONE);
+        Context c = getContext();
+        clock.setVisibility(Prefs.showClock(c) ? VISIBLE : GONE);
+        int m = Ui.dp(c, 24);
+        LayoutParams ip = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT,
+                android.view.Gravity.BOTTOM | android.view.Gravity.START);
+        ip.setMargins(m, m, m, m);
+        info.setLayoutParams(ip);
+        if (lastMeta != null || lastPlace != null) info.show(lastMeta, lastPlace);
     }
 
     private void load(File specific) {
@@ -179,9 +196,13 @@ final class SlideshowView extends FrameLayout {
         worker.execute(() -> {
             File f = specific != null ? specific : source.next();
             Bitmap bmp = f == null ? null : decode(f, w, h);
+            PhotoSource.Meta meta = f == null ? null : source.metaFor(f);
+            String place = source.placeFor(meta); // may look up a place name (network)
             String err = source.lastError();
             main.post(() -> {
                 loading = false;
+                lastMeta = meta;
+                lastPlace = place;
                 show(f, bmp, err);
             });
         });
@@ -203,6 +224,10 @@ final class SlideshowView extends FrameLayout {
         message.setVisibility(GONE);
         applySettings();
         currentFile = file;
+        currentInfo = InfoPanel.line(lastMeta, lastPlace);
+        info.show(lastMeta, lastPlace);
+        info.setAlpha(0f);
+        info.animate().alpha(1f).setStartDelay(Prefs.transitionMs(getContext()) / 2).setDuration(800).start();
         history.addLast(file);
         while (history.size() > 50) history.pollFirst();
 
@@ -239,6 +264,7 @@ final class SlideshowView extends FrameLayout {
         in.bringToFront();
         message.bringToFront();
         clock.bringToFront();
+        info.bringToFront();
         float w = getWidth();
         switch (type) {
             case "none":

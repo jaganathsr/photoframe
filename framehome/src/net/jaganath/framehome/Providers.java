@@ -39,6 +39,7 @@ final class Providers {
     static final class Photo {
         final String id;   // stable within the source (asset id or relative path)
         final long taken;  // ms since epoch, 0 if unknown
+        PhotoSource.Meta meta; // date/place/camera for the info panel, if the source knows it
         Photo(String id, long taken) { this.id = id; this.taken = taken; }
     }
 
@@ -113,6 +114,7 @@ final class Providers {
                 JSONObject body = new JSONObject()
                         .put("albumIds", new JSONArray().put(albumId))
                         .put("type", "IMAGE").put("size", 1000).put("page", page)
+                        .put("withExif", true)
                         .put("order", ascending ? "asc" : "desc");
                 JSONObject res = new JSONObject(new String(
                         request("POST", "/api/search/metadata", body.toString()),
@@ -120,7 +122,9 @@ final class Providers {
                 JSONArray items = res.getJSONArray("items");
                 for (int i = 0; i < items.length(); i++) {
                     JSONObject a = items.getJSONObject(i);
-                    out.add(new Photo(a.getString("id"), parseIso(a.optString("fileCreatedAt", ""))));
+                    Photo ph = new Photo(a.getString("id"), parseIso(a.optString("fileCreatedAt", "")));
+                    ph.meta = PhotoSource.Meta.fromImmich(a);
+                    out.add(ph);
                 }
                 String nxt = res.optString("nextPage", "");
                 page = (nxt.isEmpty() || "null".equals(nxt)) ? 0 : Integer.parseInt(nxt);

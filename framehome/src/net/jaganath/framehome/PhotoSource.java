@@ -47,6 +47,76 @@ final class PhotoSource {
         int intervalSeconds = 30;
     }
 
+    /** What the info line shows for a photo: when and where it was taken. */
+    static final class Meta {
+        String when;  // "2026-10-25 12:31", local time where the photo was taken
+        String place; // "Poway, CA" (Immich only)
+
+        static Meta fromImmich(JSONObject a) {
+            Meta m = new Meta();
+            String local = a.optString("localDateTime", "");
+            if (local.length() >= 16) m.when = local.substring(0, 16).replace('T', ' ');
+            JSONObject e = a.optJSONObject("exifInfo");
+            if (e != null) m.place = placeName(str(e, "city"), str(e, "state"), str(e, "country"));
+            return m;
+        }
+
+        static Meta fromExif(ExifInterface x) {
+            Meta m = new Meta();
+            String dt = x.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL);
+            if (dt == null) dt = x.getAttribute(ExifInterface.TAG_DATETIME);
+            if (dt != null && dt.length() >= 16) {
+                m.when = dt.substring(0, 10).replace(':', '-') + " " + dt.substring(11, 16);
+            }
+            return m;
+        }
+
+        JSONObject toJson() throws Exception {
+            JSONObject o = new JSONObject();
+            if (when != null) o.put("w", when);
+            if (place != null) o.put("p", place);
+            return o;
+        }
+
+        static Meta fromJson(JSONObject o) {
+            Meta m = new Meta();
+            m.when = o.optString("w", null);
+            m.place = o.optString("p", null);
+            return m;
+        }
+
+        private static String str(JSONObject o, String k) {
+            String v = o.isNull(k) ? null : o.optString(k, null);
+            return v == null || v.trim().isEmpty() ? null : v.trim();
+        }
+
+        static String placeName(String city, String state, String country) {
+            if (city == null && state == null && country == null) return null;
+            boolean us = country != null && (country.equals("United States") || country.equals("USA")
+                    || country.equalsIgnoreCase("us"));
+            String region = us ? usState(state) : country;
+            if (city != null) return region == null || region.equalsIgnoreCase(city) ? city : city + ", " + region;
+            if (state != null) return us || country == null ? state : state + ", " + country;
+            return country;
+        }
+
+        private static String usState(String state) {
+            if (state == null) return null;
+            String[] names = {"Alabama","AL","Alaska","AK","Arizona","AZ","Arkansas","AR","California","CA",
+                "Colorado","CO","Connecticut","CT","Delaware","DE","Florida","FL","Georgia","GA","Hawaii","HI",
+                "Idaho","ID","Illinois","IL","Indiana","IN","Iowa","IA","Kansas","KS","Kentucky","KY",
+                "Louisiana","LA","Maine","ME","Maryland","MD","Massachusetts","MA","Michigan","MI",
+                "Minnesota","MN","Mississippi","MS","Missouri","MO","Montana","MT","Nebraska","NE",
+                "Nevada","NV","New Hampshire","NH","New Jersey","NJ","New Mexico","NM","New York","NY",
+                "North Carolina","NC","North Dakota","ND","Ohio","OH","Oklahoma","OK","Oregon","OR",
+                "Pennsylvania","PA","Rhode Island","RI","South Carolina","SC","South Dakota","SD",
+                "Tennessee","TN","Texas","TX","Utah","UT","Vermont","VT","Virginia","VA","Washington","WA",
+                "West Virginia","WV","Wisconsin","WI","Wyoming","WY","District of Columbia","DC"};
+            for (int i = 0; i < names.length; i += 2) if (names[i].equalsIgnoreCase(state)) return names[i + 1];
+            return state;
+        }
+    }
+
     private static PhotoSource instance;
 
     static synchronized PhotoSource get(Context c) {
@@ -61,6 +131,8 @@ final class PhotoSource {
     private Providers.Provider provider;
     private List<String> ids = new ArrayList<>();
     private final Map<String, Long> taken = new HashMap<>();
+    private final Map<String, Meta> metas = new HashMap<>();
+    private final Map<String, String> fileToId = new HashMap<>();
     private final Deque<String> deck = new ArrayDeque<>();
     private long lastRefresh;
     private String keyOfList;
@@ -93,6 +165,17 @@ final class PhotoSource {
     synchronized String lastError() { return lastError; }
 
     synchronized int count() { return ids.size(); }
+
+    /** Details for a photo returned by next(), or null if unknown. */
+    synchronized Meta metaFor(File f) {
+        String id = f == null ? null : fileToId.get(f.getPath());
+        return id == null ? null : metas.get(id);
+    }
+
+    /** Place to show for a photo (Immich knows it; other sources don't). */
+    String placeFor(Meta m) {
+        return m == null ? null : m.place;
+    }
 
     /** Source settings changed or the user asked to reload: rebuild the provider and list. */
     synchronized void invalidate() {
@@ -148,6 +231,7 @@ final class PhotoSource {
                 fresh.add(ph.id);
                 // Keep a better date (from EXIF) found earlier; otherwise use the source's date.
                 if (ph.taken > 0 && (!taken.containsKey(ph.id) || sourceChanged)) taken.put(ph.id, ph.taken);
+                if (ph.meta != null) metas.put(ph.id, ph.meta);
             }
             List<String> previous = ids;
             ids = fresh;
@@ -157,6 +241,8 @@ final class PhotoSource {
                 deck.clear();
                 keyOfList = p.key();
                 writeList();
+            } else if (p instanceof Providers.ImmichProvider) {
+                writeList(); // keep photo details current (place names can change in Immich)
             } else if (!fresh.equals(previous)) {
                 // Photos added/removed: keep the current pass so every photo is still shown, drop
                 // removed ones, and show newly added photos soon.
@@ -178,6 +264,7 @@ final class PhotoSource {
         if (id == null) return null;
         Providers.Provider p = provider();
         File f = new File(cacheDir, cacheName(p, id));
+        fileToId.put(f.getPath(), id);
         if (f.length() > 0) {
             f.setLastModified(System.currentTimeMillis());
             return f;
@@ -188,6 +275,11 @@ final class PhotoSource {
             if (!p.readyToShow()) {
                 long exifTime = exifTaken(tmp);
                 if (exifTime > 0) taken.put(id, exifTime);
+                try {
+                    metas.put(id, Meta.fromExif(new ExifInterface(tmp.getPath())));
+                    writeList();
+                } catch (Exception ignored) {
+                }
                 if (!normalize(tmp, f)) return null;
             } else if (!tmp.renameTo(f)) {
                 return null;
@@ -296,6 +388,8 @@ final class PhotoSource {
                     ids.add(id);
                     long t = ((JSONObject) item).optLong("t", 0);
                     if (t > 0) taken.put(id, t);
+                    JSONObject mj = ((JSONObject) item).optJSONObject("i");
+                    if (mj != null) metas.put(id, Meta.fromJson(mj));
                 } else {
                     ids.add(String.valueOf(item));
                 }
@@ -311,6 +405,8 @@ final class PhotoSource {
                 JSONObject o = new JSONObject().put("id", id);
                 Long t = taken.get(id);
                 if (t != null) o.put("t", t);
+                Meta m = metas.get(id);
+                if (m != null) o.put("i", m.toJson());
                 a.put(o);
             }
             JSONObject root = new JSONObject().put("source", keyOfList == null ? "" : keyOfList).put("photos", a);

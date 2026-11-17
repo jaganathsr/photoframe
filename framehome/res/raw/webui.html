@@ -123,6 +123,7 @@
       <img id="current" alt="Photo on the frame now">
       <span class="empty" id="no-photo">No photo showing</span>
     </div>
+    <div id="now-info" class="hint" style="padding:8px 16px 0;text-align:center" hidden></div>
     <div class="controls">
       <button data-action="prev" aria-label="Previous photo">‹ Previous</button>
       <button data-action="start" class="primary">Slideshow</button>
@@ -228,6 +229,10 @@
       <label for="showClock">Show clock</label>
       <label class="switch"><input type="checkbox" id="showClock"><span></span></label>
     </div>
+    <div class="row">
+      <label for="photoInfo">Show date and place<span class="hint">A small line with when and where each photo was taken (place names come from Immich)</span></label>
+      <label class="switch"><input type="checkbox" id="photoInfo"><span></span></label>
+    </div>
     <div class="row" id="album-row">
       <label for="albumId">Album</label>
       <select id="albumId"><option>Loading…</option></select>
@@ -303,6 +308,7 @@
   let pin = null;
   try { pin = localStorage.getItem('frame-pin'); } catch (e) {}
   let settings = {};
+  const INFO_SWITCHES = ['photoInfo'];
   const albumCounts = {};
   let busy = false;
 
@@ -359,7 +365,7 @@
     }
     $('transitionMs').value = s.transitionMs;
     $('transitionMs-val').textContent = (s.transitionMs / 1000).toFixed(1) + ' s';
-    for (const k of ['showClock', 'scheduleEnabled', 'slideshowOnWake', 'slideshowOnBoot']) $(k).checked = !!s[k];
+    for (const k of ['showClock', 'scheduleEnabled', 'slideshowOnWake', 'slideshowOnBoot', ...INFO_SWITCHES]) $(k).checked = !!s[k];
     const auto = s.brightness < 0;
     $('autoBrightness').checked = auto;
     $('brightness-row').hidden = auto;
@@ -452,6 +458,8 @@
   let lastStatus = null;
   function renderStatus(st) {
     lastStatus = st;
+    $('now-info').hidden = !st.nowShowing;
+    $('now-info').textContent = st.nowShowing || '';
     $('version').textContent = st.version + (st.deviceOwner ? ' · updates install silently'
       : st.canInstall ? ' · updates need a confirm on the frame' : ' · allow updates in Setup on the frame');
     $('restart').parentElement.hidden = !st.deviceOwner;
@@ -541,7 +549,7 @@
     $(k).addEventListener('change', (e) => save({ [k]: e.target.value }));
   }
   $('idleMinutes').addEventListener('change', (e) => save({ idleMinutes: +e.target.value }));
-  for (const k of ['showClock', 'scheduleEnabled', 'slideshowOnWake', 'slideshowOnBoot']) {
+  for (const k of ['showClock', 'scheduleEnabled', 'slideshowOnWake', 'slideshowOnBoot', ...INFO_SWITCHES]) {
     $(k).addEventListener('change', (e) => save({ [k]: e.target.checked }));
   }
   $('autoBrightness').addEventListener('change', (e) => save({ brightness: e.target.checked ? -1 : 60 }));

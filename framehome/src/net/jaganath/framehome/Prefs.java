@@ -122,6 +122,9 @@ final class Prefs {
     static String order(Context c) { return p(c).getString("order", "shuffle"); }
     static String fit(Context c) { return p(c).getString("fit", "smart"); }
     static String recency(Context c) { return p(c).getString("recency", "slight"); }
+
+    /** Small "date · place" line on each photo. */
+    static boolean photoInfo(Context c) { return p(c).getBoolean("photoInfo", true); }
     static boolean showClock(Context c) { return p(c).getBoolean("showClock", true); }
     static int idleMinutes(Context c) { return p(c).getInt("idleMinutes", 2); }
     static String albumId(Context c) {
@@ -173,6 +176,7 @@ final class Prefs {
                 .put("order", order(c))
                 .put("fit", fit(c))
                 .put("recency", recency(c))
+                .put("photoInfo", photoInfo(c))
                 .put("showClock", showClock(c))
                 .put("albumId", albumId(c) == null ? JSONObject.NULL : albumId(c))
                 .put("idleMinutes", idleMinutes(c))
@@ -198,6 +202,7 @@ final class Prefs {
                 reshuffle = true;
             }
             if (o.has("showClock")) e.putBoolean("showClock", o.getBoolean("showClock"));
+            if (o.has("photoInfo")) e.putBoolean("photoInfo", o.getBoolean("photoInfo"));
             if (o.has("idleMinutes")) e.putInt("idleMinutes", clamp(o.getInt("idleMinutes"), 0, 240));
             if (o.has("order")) {
                 e.putString("order", oneOf(o.getString("order"), ORDERS));

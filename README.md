@@ -34,7 +34,7 @@ Frame Home takes the cloud dependency out. It replaces the frame's software with
   - an [Immich](https://immich.app) album
   - a network share over **SMB** (Windows PCs, Synology, QNAP, TrueNAS, Samba)
   - a folder on the frame or a USB stick
-- Full-screen slideshow: crossfade, slide, zoom or Ken Burns transitions, shuffle with an optional bias towards recent photos, adjustable photo duration, clock overlay. Photos are cached on the frame, so it keeps playing if the source is offline.
+- Full-screen slideshow: crossfade, slide, zoom or Ken Burns transitions, shuffle with an optional bias towards recent photos, adjustable photo duration, clock overlay, and an optional small line with the date and place each photo was taken. Photos are cached on the frame, so it keeps playing if the source is offline.
 - Sleep and wake schedule: screen off at night, back on in the morning.
 - **Phone remote**: a page served by the frame (`http://FRAME_IP:8080`, PIN-protected) to change every setting, start or skip photos, adjust brightness, see what's showing, and send updates.
 - On-frame **Setup checklist**: install from the browser, no computer needed.
